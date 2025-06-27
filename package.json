@@ -1,0 +1,19 @@
+{
+  "name": "aqsdcybernaut",
+  "version": "1.0.0",
+  "description": "A discord bot token written in JavaScript",
+  "keywords": [
+    "discord"
+  ],
+  "license": "MIT",
+  "author": "northbridgewon",
+  "type": "commonjs",
+  "main": "init.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "discord.js": "^14.19.3",
+    "node-fetch": "^3.3.2"
+  }
+}
