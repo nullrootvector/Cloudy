@@ -49,6 +49,9 @@ const client = new Client({
     ]
 });
 
+const voiceTime = new Map();
+const userMessages = new Map();
+
 // Storing our commands
 client.commands = new Collection();
 
@@ -387,8 +390,162 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
     }
 });
 
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+    const user = oldState.member.user;
+    if (user.bot) return;
+
+    if (oldState.channelId && !newState.channelId) {
+        // User left a voice channel
+        const joinTime = voiceTime.get(user.id);
+        if (joinTime) {
+            const timeSpent = Date.now() - joinTime;
+            const xpToGive = Math.floor(timeSpent / 60000); // 1 XP per minute
+            if (xpToGive > 0) {
+                const userId = user.id;
+                if (!levels[userId]) {
+                    levels[userId] = { xp: 0, level: 0 };
+                }
+                levels[userId].xp += xpToGive;
+                const nextLevelXp = 5 * (levels[userId].level ** 2) + 50 * levels[userId].level + 100;
+                if (levels[userId].xp >= nextLevelXp) {
+                    levels[userId].level++;
+                    levels[userId].xp = 0;
+                    const channel = oldState.guild.channels.cache.get(config.WELCOME_CHANNEL_ID);
+                    if (channel) {
+                        channel.send(`Congratulations ${user}! You've reached level ${levels[userId].level}!`);
+                    }
+                }
+            }
+            voiceTime.delete(user.id);
+        }
+    } else if (!oldState.channelId && newState.channelId) {
+        // User joined a voice channel
+        voiceTime.set(user.id, Date.now());
+    }
+});
+
+client.on(Events.ChannelCreate, async channel => {
+    if (config.AUDIT_LOG_CHANNEL_ID) {
+        const logChannel = await channel.guild.channels.fetch(config.AUDIT_LOG_CHANNEL_ID);
+        if (logChannel) {
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('Channel Created')
+                .setDescription(`Channel ${channel.name} was created.`)
+                .setTimestamp();
+            logChannel.send({ embeds: [embed] });
+        }
+    }
+});
+
+client.on(Events.ChannelDelete, async channel => {
+    if (config.AUDIT_LOG_CHANNEL_ID) {
+        const logChannel = await channel.guild.channels.fetch(config.AUDIT_LOG_CHANNEL_ID);
+        if (logChannel) {
+            const embed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('Channel Deleted')
+                .setDescription(`Channel ${channel.name} was deleted.`)
+                .setTimestamp();
+            logChannel.send({ embeds: [embed] });
+        }
+    }
+});
+
+client.on(Events.RoleCreate, async role => {
+    if (config.AUDIT_LOG_CHANNEL_ID) {
+        const logChannel = await role.guild.channels.fetch(config.AUDIT_LOG_CHANNEL_ID);
+        if (logChannel) {
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('Role Created')
+                .setDescription(`Role ${role.name} was created.`)
+                .setTimestamp();
+            logChannel.send({ embeds: [embed] });
+        }
+    }
+});
+
+client.on(Events.RoleDelete, async role => {
+    if (config.AUDIT_LOG_CHANNEL_ID) {
+        const logChannel = await role.guild.channels.fetch(config.AUDIT_LOG_CHANNEL_ID);
+        if (logChannel) {
+            const embed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('Role Deleted')
+                .setDescription(`Role ${role.name} was deleted.`)
+                .setTimestamp();
+            logChannel.send({ embeds: [embed] });
+        }
+    }
+});
+
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot || !message.guild) return;
+
+    // Auto-moderation
+    if (config.autoModeration) {
+        // Anti-spam
+        if (config.autoModeration.antiSpam && config.autoModeration.antiSpam.enabled) {
+            const now = Date.now();
+            const user = userMessages.get(message.author.id);
+            if (user) {
+                const { lastMessage, timer } = user;
+                const diff = now - lastMessage.createdTimestamp;
+                if (diff < config.autoModeration.antiSpam.timeInterval) {
+                    let { count } = user;
+                    count++;
+                    if (count >= config.autoModeration.antiSpam.messageLimit) {
+                        message.delete();
+                        message.channel.send(`${message.author}, please don't spam!`).then(msg => {
+                            setTimeout(() => msg.delete().catch(console.error), 5000);
+                        });
+                        return;
+                    }
+                    user.count = count;
+                } else {
+                    clearTimeout(timer);
+                    user.count = 1;
+                    user.lastMessage = message;
+                    user.timer = setTimeout(() => {
+                        userMessages.delete(message.author.id);
+                    }, config.autoModeration.antiSpam.timeInterval);
+                }
+            } else {
+                const timer = setTimeout(() => {
+                    userMessages.delete(message.author.id);
+                }, config.autoModeration.antiSpam.timeInterval);
+                userMessages.set(message.author.id, {
+                    count: 1,
+                    lastMessage: message,
+                    timer
+                });
+            }
+        }
+
+        // Anti-mention
+        if (config.autoModeration.antiMention && config.autoModeration.antiMention.enabled) {
+            if (message.mentions.users.size > config.autoModeration.antiMention.mentionLimit) {
+                message.delete();
+                message.channel.send(`${message.author}, please don't mass mention!`).then(msg => {
+                    setTimeout(() => msg.delete().catch(console.error), 5000);
+                });
+                return;
+            }
+        }
+
+        // Anti-caps
+        if (config.autoModeration.antiCaps && config.autoModeration.antiCaps.enabled) {
+            const caps = message.content.replace(/[^A-Z]/g, '').length;
+            if (caps / message.content.length > config.autoModeration.antiCaps.capsLimit) {
+                message.delete();
+                message.channel.send(`${message.author}, please don't use excessive caps!`).then(msg => {
+                    setTimeout(() => msg.delete().catch(console.error), 5000);
+                });
+                return;
+            }
+        }
+    }
 
     const userId = message.author.id;
     if (!levels[userId]) {
@@ -408,8 +565,18 @@ client.on(Events.MessageCreate, async message => {
     }
 
     // Bad word filter logic
+    // Re-read the badwords list on every message to ensure it's up-to-date
+    let currentBadwords = [];
+    try {
+        const badwordsPath = path.join(__dirname, 'badwords.json');
+        const data = fs.readFileSync(badwordsPath, 'utf8');
+        currentBadwords = JSON.parse(data);
+    } catch (readError) {
+        console.error('Could not read badwords.json during message processing:', readError);
+    }
+
     const messageContent = message.content.toLowerCase();
-    for (const word of badwords) {
+    for (const word of currentBadwords) {
         if (messageContent.includes(word)) {
             try {
                 await message.delete();
