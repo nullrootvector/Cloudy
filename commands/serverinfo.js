@@ -1,24 +1,17 @@
-const { EmbedBuilder } = require('discord.js'); // We need EmbedBuilder for fancy messages!
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 
 module.exports = {
-    name: 'serverinfo',
-    description: 'Displays detailed information about the current server.',
-    aliases: ['si', 'guildinfo', '服务器信息'], // 服务器信息 (fúwùqì xìnxī - server information)
-    // guildOnly: true, // This command only makes sense in a server context
+    data: new SlashCommandBuilder()
+        .setName('serverinfo')
+        .setDescription('Displays detailed information about the current server.'),
 
-    /**
-     * @param {import('discord.js').Message} message
-     * @param {string[]} args
-     * @param {import('discord.js').Client} client
-     * @param {object} config
-     */
-    async execute(message, args, client, config) {
+    async execute(interaction) {
         // Ensure the command is used in a server
-        if (!message.guild) {
-            return message.reply("亲爱的，这个命令只能在服务器里用哦！(My dear, this command can only be used in a server!)");
+        if (!interaction.guild) {
+            return interaction.reply({ content: "亲爱的，这个命令只能在服务器里用哦！(My dear, this command can only be used in a server!)", ephemeral: true });
         }
 
-        const guild = message.guild;
+        const guild = interaction.guild;
 
         // Fetch owner details - this can be an async operation
         let ownerTag = 'N/A';
@@ -59,9 +52,6 @@ module.exports = {
                 { name: '📅 Created On (创建日期)', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:F>`, inline: true }, // Using Discord's timestamp formatting
                 
                 { name: '👥 Members (成员)', value: `Total: ${guild.memberCount}`, inline: true },
-                // More detailed member counts require fetching all members or specific intents, keeping it simple for now.
-                // { name: 'Humans', value: `${guild.members.cache.filter(member => !member.user.bot).size}`, inline: true },
-                // { name: 'Bots', value: `${guild.members.cache.filter(member => member.user.bot).size}`, inline: true },
 
                 { name: '📜 Roles (角色数量)', value: `${guild.roles.cache.size}`, inline: true },
                 { name: '💬 Channels (频道数量)', value: `${guild.channels.cache.size}`, inline: true }, // This includes all channel types
@@ -71,13 +61,17 @@ module.exports = {
                 { name: '💎 Boost Count (加速数量)', value: `${guild.premiumSubscriptionCount || 0}`, inline: true }
             )
             .setTimestamp()
-            .setFooter({ text: `Requested by ${message.author.tag} | Information from ${guild.name}`, iconURL: message.author.displayAvatarURL({ dynamic: true }) });
+            .setFooter({ text: `Requested by ${interaction.user.tag} | Information from ${guild.name}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
 
         try {
-            await message.channel.send({ embeds: [serverEmbed] });
+            await interaction.reply({ embeds: [serverEmbed] });
         } catch (error) {
             console.error(`Error sending server info embed for ${guild.name}:`, error);
-            await message.reply("Oh dear, I had a little hiccup trying to fetch that server info for you!").catch(console.error);
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({ content: "Oh dear, I had a little hiccup trying to fetch that server info for you!", ephemeral: true });
+            } else {
+                await interaction.reply({ content: "Oh dear, I had a little hiccup trying to fetch that server info for you!", ephemeral: true });
+            }
         }
     }
 };

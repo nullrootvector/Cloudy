@@ -1,39 +1,35 @@
-const { EmbedBuilder } = require('discord.js');
-const https = require('https');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+
 
 module.exports = {
-    name: 'meme',
-    description: 'Sends a random meme from r/memes.',
-    aliases: ['memes', 'funny'],
-    usage: '',
+    data: new SlashCommandBuilder()
+        .setName('meme')
+        .setDescription('Sends a random meme from Reddit.'),
+    async execute(interaction) {
+        try {
+            await interaction.deferReply(); // Defer the reply as fetching a meme can take time
 
-    async execute(message, args) {
-        https.get('https://meme-api.com/gimme', (res) => {
-            let data = '';
+            const response = await fetch('https://meme-api.com/gimme');
+            const data = await response.json();
 
-            res.on('data', chunk => {
-                data += chunk;
-            });
+            if (data && data.url) {
+                const embed = new EmbedBuilder()
+                    .setTitle(data.title)
+                    .setImage(data.url)
+                    .setURL(data.postLink)
+                    .setFooter({ text: `👍 ${data.ups} | r/${data.subreddit}` });
 
-            res.on('end', () => {
-                try {
-                    const meme = JSON.parse(data);
-                    const embed = new EmbedBuilder()
-                        .setTitle(meme.title)
-                        .setImage(meme.url)
-                        .setURL(meme.postLink)
-                        .setFooter({ text: `👍 ${meme.ups} | r/${meme.subreddit}` });
-
-                    message.channel.send({ embeds: [embed] });
-                } catch (err) {
-                    console.error('Failed to parse meme:', err);
-                    message.channel.send('Could not fetch a meme at this time. Try again later!');
-                }
-            });
-
-        }).on('error', (err) => {
-            console.error('API call error:', err);
-            message.channel.send('Something went wrong while fetching the meme.');
-        });
+                await interaction.editReply({ embeds: [embed] });
+            } else {
+                await interaction.editReply('Could not fetch a meme. Try again later!');
+            }
+        } catch (error) {
+            console.error('Error fetching meme:', error);
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp({ content: 'An error occurred while trying to fetch a meme.', ephemeral: true });
+            } else {
+                await interaction.reply({ content: 'An error occurred while trying to fetch a meme.', ephemeral: true });
+            }
+        }
     },
 };
