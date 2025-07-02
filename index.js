@@ -279,6 +279,30 @@ try {
     }
 }
 
+const economyPath = path.join(__dirname, 'economy.json');
+let economy = {};
+try {
+    const data = fs.readFileSync(economyPath, 'utf8');
+    economy = JSON.parse(data);
+} catch (readError) {
+    console.error('Error reading economy.json on startup:', readError);
+    if (readError.code === 'ENOENT') {
+        fs.writeFileSync(economyPath, JSON.stringify({}, null, 2));
+    }
+}
+
+const shopPath = path.join(__dirname, 'shop.json');
+let shop = [];
+try {
+    const data = fs.readFileSync(shopPath, 'utf8');
+    shop = JSON.parse(data);
+} catch (readError) {
+    console.error('Error reading shop.json on startup:', readError);
+    if (readError.code === 'ENOENT') {
+        fs.writeFileSync(shopPath, JSON.stringify([], null, 2));
+    }
+}
+
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -326,6 +350,40 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
     if (user.bot) return;
+
+    // Starboard
+    if (config.starboard && config.starboard.enabled) {
+        if (reaction.emoji.name === config.starboard.emoji) {
+            const message = reaction.message;
+            const starboardChannel = await message.guild.channels.fetch(config.starboard.channelId);
+            if (starboardChannel) {
+                const fetchedMessages = await starboardChannel.messages.fetch({ limit: 100 });
+                const existingStarboardMessage = fetchedMessages.find(m => m.embeds[0] && m.embeds[0].footer.text.endsWith(message.id));
+
+                if (existingStarboardMessage) {
+                    const starCount = existingStarboardMessage.embeds[0].author.name.split(' ')[0].replace(/[^0-9]/g, '');
+                    const newStarCount = parseInt(starCount) + 1;
+                    const newEmbed = new EmbedBuilder(existingStarboardMessage.embeds[0])
+                        .setAuthor({ name: `${newStarCount} ${config.starboard.emoji}` });
+                    await existingStarboardMessage.edit({ embeds: [newEmbed] });
+                } else if (reaction.count >= config.starboard.requiredStars) {
+                    const embed = new EmbedBuilder()
+                        .setAuthor({ name: `${reaction.count} ${config.starboard.emoji}` })
+                        .setColor('#FFAC33')
+                        .setDescription(message.content)
+                        .setThumbnail(message.author.displayAvatarURL())
+                        .setTimestamp(message.createdAt)
+                        .setFooter({ text: `⭐ | ${message.id}` });
+
+                    if (message.attachments.size > 0) {
+                        embed.setImage(message.attachments.first().url);
+                    }
+
+                    await starboardChannel.send({ embeds: [embed] });
+                }
+            }
+        }
+    }
 
     if (reaction.partial) {
         try {
@@ -390,9 +448,42 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
     }
 });
 
-client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
     const user = oldState.member.user;
     if (user.bot) return;
+
+    // Temporary voice channels
+    if (config.temporaryVoiceChannels && config.temporaryVoiceChannels.enabled) {
+        const creatorChannelId = config.temporaryVoiceChannels.creatorChannelId;
+        const categoryId = config.temporaryVoiceChannels.categoryId;
+        const channelNamePrefix = config.temporaryVoiceChannels.channelNamePrefix;
+
+        // User joins the creator channel
+        if (newState.channelId === creatorChannelId) {
+            const guild = newState.guild;
+            const member = newState.member;
+            const channelName = `${channelNamePrefix}${member.displayName}`;
+
+            const createdChannel = await guild.channels.create({
+                name: channelName,
+                type: 2, // GUILD_VOICE
+                parent: categoryId,
+                permissionOverwrites: [
+                    {
+                        id: member.id,
+                        allow: [PermissionsBitField.Flags.ManageChannels],
+                    },
+                ],
+            });
+
+            await member.voice.setChannel(createdChannel);
+        }
+
+        // User leaves a voice channel
+        if (oldState.channel && oldState.channel.name.startsWith(channelNamePrefix) && oldState.channel.members.size === 0) {
+            await oldState.channel.delete();
+        }
+    }
 
     if (oldState.channelId && !newState.channelId) {
         // User left a voice channel
@@ -417,6 +508,15 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
                 }
             }
             voiceTime.delete(user.id);
+
+            // Economy: Award currency for voice time
+            if (config.economy && config.economy.enabled) {
+                if (!economy[userId]) {
+                    economy[userId] = { balance: 0, lastDaily: 0 };
+                }
+                const currencyToGive = Math.floor(timeSpent / 30000); // 1 currency per 30 seconds
+                economy[userId].balance += currencyToGive;
+            }
         }
     } else if (!oldState.channelId && newState.channelId) {
         // User joined a voice channel
@@ -562,6 +662,15 @@ client.on(Events.MessageCreate, async message => {
         levels[userId].level++;
         levels[userId].xp = 0; // Reset XP for the new level
         message.channel.send(`恭喜 ${message.author}！你已达到等级 ${levels[userId].level}！(Congratulations ${message.author}! You've reached level ${levels[userId].level}!)`);
+    }
+
+    // Economy: Award currency for messages
+    if (config.economy && config.economy.enabled) {
+        if (!economy[userId]) {
+            economy[userId] = { balance: 0, lastDaily: 0 };
+        }
+        const currencyToGive = Math.floor(Math.random() * 5) + 1; // 1-5 currency per message
+        economy[userId].balance += currencyToGive;
     }
 
     // Bad word filter logic
