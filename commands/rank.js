@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const fs = require('node:fs');
-const path = require('node:path');
+const db = require('../database.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -13,33 +12,41 @@ module.exports = {
 
     async execute(interaction) {
         const user = interaction.options.getUser('target') || interaction.user;
-        const levelsPath = path.join(__dirname, '..', 'levels.json');
-        let levels = {};
+        const userId = user.id;
+        const guildId = interaction.guild.id;
 
-        try {
-            const data = fs.readFileSync(levelsPath, 'utf8');
-            levels = JSON.parse(data);
-        } catch (readError) {
-            console.error('Error reading levels.json:', readError);
-            return interaction.reply({
-                content: 'Could not read level data.',
-                ephemeral: true
-            });
-        }
+        db.get('SELECT * FROM levels WHERE userId = ? AND guildId = ?', [userId, guildId], (err, row) => {
+            if (err) {
+                console.error('Error fetching rank:', err);
+                return interaction.reply({ content: 'An error occurred while fetching the rank.', ephemeral: true });
+            }
 
-        const userData = levels[user.id] || { xp: 0, level: 0 };
-        const currentLevel = userData.level;
-        const currentXp = userData.xp;
-        const xpNeededForNextLevel = 5 * (currentLevel ** 2) + 50 * currentLevel + 100;
+            let level = 0;
+            let xp = 0;
+            if (row) {
+                level = row.level;
+                xp = row.xp;
+            } else {
+                // If user doesn't exist, create an entry for them
+                db.run('INSERT INTO levels (userId, guildId, xp, level) VALUES (?, ?, ?, ?)', [userId, guildId, 0, 0], (err) => {
+                    if (err) {
+                        console.error('Error creating level entry:', err);
+                        return interaction.reply({ content: 'An error occurred while creating your rank.', ephemeral: true });
+                    }
+                });
+            }
 
-        const rankEmbed = new EmbedBuilder()
-            .setColor('#0099ff')
-            .setTitle(`🏆 ${user.tag}'s Rank`)
-            .setDescription(`**Level (等级):** ${currentLevel}\n**XP (经验):** ${currentXp}/${xpNeededForNextLevel}`)
-            .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 512 }))
-            .setTimestamp()
-            .setFooter({ text: `Requested by ${interaction.user.tag}` });
+            const xpNeededForNextLevel = 5 * (level ** 2) + 50 * level + 100;
 
-        await interaction.reply({ embeds: [rankEmbed], ephemeral: false });
+            const rankEmbed = new EmbedBuilder()
+                .setColor('#0099ff')
+                .setTitle(`🏆 ${user.tag}\'s Rank`)
+                .setDescription(`**Level:** ${level}\n**XP:** ${xp}/${xpNeededForNextLevel}`)
+                .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 512 }))
+                .setTimestamp()
+                .setFooter({ text: `Requested by ${interaction.user.tag}` });
+
+            interaction.reply({ embeds: [rankEmbed], ephemeral: false });
+        });
     },
-}
+};

@@ -1,66 +1,66 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const fs = require('node:fs');
-const path = require('node:path');
+const db = require('../database.js');
+
+const COOLDOWN = 86400000; // 24 hours in milliseconds
 
 module.exports = {
-    // Define the command's data for Discord's API
     data: new SlashCommandBuilder()
-        .setName('daily') // The name of the slash command
-        .setDescription('Claims your daily currency.'), // The description of the command
+        .setName('daily')
+        .setDescription('Claims your daily currency.'),
 
-    // The execute function contains the command's logic
     async execute(interaction, config) {
-        // Construct the absolute path to the economy.json file
-        const economyPath = path.join(__dirname, '..', 'economy.json');
-        let economy = {}; // Initialize an empty object to hold economy data
+        const userId = interaction.user.id;
+        const guildId = interaction.guild.id;
+        const now = Date.now();
 
-        // Read the existing economy.json file
-        try {
-            const data = fs.readFileSync(economyPath, 'utf8'); // Read file synchronously
-            economy = JSON.parse(data); // Parse the JSON data into an object
-        } catch (readError) {
-            // Log an error if the file cannot be read (e.g., it doesn't exist or is malformed)
-            console.error('Error reading economy.json:', readError);
-            // If the file doesn't exist, it will be created when a user claims their daily reward
-        }
+        db.get('SELECT * FROM economy WHERE userId = ? AND guildId = ?', [userId, guildId], (err, row) => {
+            if (err) {
+                console.error('Error fetching daily status:', err);
+                return interaction.reply({ content: 'An error occurred while claiming your daily reward.', ephemeral: true });
+            }
 
-        // Get the user's economy data based on their Discord ID
-        const user = economy[interaction.user.id];
-        // If the user has no economy data, initialize it with a balance of 0 and lastDaily of 0
-        if (!user) {
-            economy[interaction.user.id] = { balance: 0, lastDaily: 0 };
-        }
+            if (row) {
+                const diff = now - row.lastDaily;
+                if (diff < COOLDOWN) {
+                    const timeLeft = COOLDOWN - diff;
+                    const hours = Math.floor(timeLeft / 3600000);
+                    const minutes = Math.floor((timeLeft % 3600000) / 60000);
+                    return interaction.reply({
+                        content: `You have already claimed your daily reward. You can claim it again in ${hours} hours and ${minutes} minutes.`,
+                        ephemeral: true
+                    });
+                }
 
-        // Get the timestamp of the user's last daily claim
-        const lastDaily = economy[interaction.user.id].lastDaily;
-        const now = Date.now(); // Get the current timestamp
-        const diff = now - lastDaily; // Calculate the time difference since the last claim
+                const newBalance = row.balance + config.economy.dailyAmount;
+                db.run('UPDATE economy SET balance = ?, lastDaily = ? WHERE userId = ? AND guildId = ?', [newBalance, now, userId, guildId], (updateErr) => {
+                    if (updateErr) {
+                        console.error('Error updating daily reward:', updateErr);
+                        return interaction.reply({ content: 'An error occurred while claiming your daily reward.', ephemeral: true });
+                    }
+                    replyWithSuccess(interaction, config);
+                });
 
-        // Check if 24 hours (86,400,000 milliseconds) have passed since the last daily claim
-        if (diff < 86400000) { 
-            // If not enough time has passed, inform the user when they can claim again
-            return interaction.reply({
-                content: `You have already claimed your daily reward. You can claim it again in ${Math.floor((86400000 - diff) / 3600000)} hours and ${Math.floor(((86400000 - diff) % 3600000) / 60000)} minutes.`, // Time remaining message
-                ephemeral: true
-            });
-        }
-
-        // Add the daily amount (from config) to the user's balance
-        economy[interaction.user.id].balance += config.economy.dailyAmount;
-        // Update the lastDaily timestamp to the current time
-        economy[interaction.user.id].lastDaily = now;
-
-        // Write the updated economy data back to the economy.json file
-        fs.writeFileSync(economyPath, JSON.stringify(economy, null, 2), 'utf8');
-
-        // Create an embed message to confirm the daily reward claim
-        const embed = new EmbedBuilder()
-            .setColor('#00FF00') // Green color for success
-            .setTitle('Daily Reward') // Title of the embed
-            .setDescription(`You have claimed your daily reward of ${config.economy.dailyAmount} ${config.economy.currencyName}.`) // Description of the reward
-            .setTimestamp(); // Add a timestamp to the embed
-
-        // Reply to the interaction with the daily reward embed
-        await interaction.reply({ embeds: [embed] });
+            } else {
+                // First time claim
+                const dailyAmount = config.economy.dailyAmount;
+                db.run('INSERT INTO economy (userId, guildId, balance, lastDaily) VALUES (?, ?, ?, ?)', [userId, guildId, dailyAmount, now], (insertErr) => {
+                    if (insertErr) {
+                        console.error('Error creating daily entry:', insertErr);
+                        return interaction.reply({ content: 'An error occurred while claiming your daily reward.', ephemeral: true });
+                    }
+                    replyWithSuccess(interaction, config);
+                });
+            }
+        });
     },
 };
+
+function replyWithSuccess(interaction, config) {
+    const embed = new EmbedBuilder()
+        .setColor('#00FF00')
+        .setTitle('Daily Reward')
+        .setDescription(`You have claimed your daily reward of ${config.economy.dailyAmount} ${config.economy.currencyName}.`)
+        .setTimestamp();
+
+    interaction.reply({ embeds: [embed] });
+}

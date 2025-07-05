@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, PermissionsBitField } = require('discord.js');
-const fs = require('node:fs');
-const path = require('node:path');
+const db = require('../database.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -19,30 +18,26 @@ module.exports = {
             });
         }
 
-        const shopPath = path.join(__dirname, '..', 'shop.json');
-        let shop = [];
-        try {
-            const data = fs.readFileSync(shopPath, 'utf8');
-            shop = JSON.parse(data);
-        } catch (readError) {
-            console.error('Error reading shop.json:', readError);
-        }
-
         const name = interaction.options.getString('name');
-        const newShop = shop.filter(item => item.name.toLowerCase() !== name.toLowerCase());
+        const guildId = interaction.guild.id;
 
-        if (newShop.length === shop.length) {
-            return interaction.reply({
-                content: 'That item does not exist in the shop.',
+        db.run('DELETE FROM shop_items WHERE guildId = ? AND name = ?', [guildId, name], function(err) {
+            if (err) {
+                console.error('Error removing item from shop:', err);
+                return interaction.reply({ content: 'An error occurred while removing the item from the shop.', ephemeral: true });
+            }
+
+            if (this.changes === 0) {
+                return interaction.reply({
+                    content: 'That item does not exist in the shop.',
+                    ephemeral: true
+                });
+            }
+
+            interaction.reply({
+                content: `Removed ${name} from the shop.`,
                 ephemeral: true
             });
-        }
-
-        fs.writeFileSync(shopPath, JSON.stringify(newShop, null, 2), 'utf8');
-
-        await interaction.reply({
-            content: `Removed ${name} from the shop.`,
-            ephemeral: true
         });
     },
 };
