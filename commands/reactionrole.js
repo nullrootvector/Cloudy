@@ -23,7 +23,7 @@ module.exports = {
         // Permission Check: User must have ManageRoles permission
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
             return interaction.reply({
-                content: "🚫 抱歉，亲爱的，你没有管理角色的权限。(Sorry, my dear, you don't have permission to manage roles.)",
+                content: "🚫 Sorry, you don't have permission to manage roles.",
                 ephemeral: true
             });
         }

@@ -17,7 +17,7 @@ module.exports = {
 
     async execute(interaction, config) {
         const memberToWarn = interaction.options.getMember('target');
-        const reason = interaction.options.getString('reason') || '没有提供理由 (No reason provided)';
+        const reason = interaction.options.getString('reason') || 'No reason provided';
 
         // Permission Check: User must have ModerateMembers permission
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {

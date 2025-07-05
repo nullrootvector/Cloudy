@@ -22,7 +22,7 @@ module.exports = {
         } catch (readError) {
             console.error('Error reading levels.json:', readError);
             return interaction.reply({
-                content: '无法读取等级数据。(Could not read level data.)',
+                content: 'Could not read level data.',
                 ephemeral: true
             });
         }

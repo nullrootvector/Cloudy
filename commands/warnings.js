@@ -22,7 +22,7 @@ module.exports = {
         } catch (readError) {
             console.error('Error reading warnings.json:', readError);
             return interaction.reply({
-                content: '无法读取警告数据。(Could not read warning data.)',
+                content: 'Could not read warning data.',
                 ephemeral: true
             });
         }

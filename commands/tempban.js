@@ -22,7 +22,7 @@ module.exports = {
     async execute(interaction, config) {
         const memberToBan = interaction.options.getMember('target');
         const duration = interaction.options.getInteger('duration'); // in minutes
-        const reason = interaction.options.getString('reason') || '没有提供理由 (No reason provided)';
+        const reason = interaction.options.getString('reason') || 'No reason provided';
 
         // Permission Check 1: User must have BanMembers permission
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {

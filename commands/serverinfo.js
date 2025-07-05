@@ -8,7 +8,7 @@ module.exports = {
     async execute(interaction) {
         // Ensure the command is used in a server
         if (!interaction.guild) {
-            return interaction.reply({ content: "亲爱的，这个命令只能在服务器里用哦！(My dear, this command can only be used in a server!)", ephemeral: true });
+            return interaction.reply({ content: "This command can only be used in a server!", ephemeral: true });
         }
 
         const guild = interaction.guild;

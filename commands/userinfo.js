@@ -13,7 +13,7 @@ module.exports = {
         const member = interaction.guild.members.cache.get(user.id);
 
         if (!member) {
-            return interaction.reply({ content: '无法找到该用户的信息。(Could not find information for that user.)', ephemeral: true });
+            return interaction.reply({ content: 'Could not find information for that user.', ephemeral: true });
         }
 
         const userInfoEmbed = new EmbedBuilder()

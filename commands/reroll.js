@@ -15,7 +15,7 @@ module.exports = {
         // Permission Check: User must have ManageGuild permission
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
             return interaction.reply({
-                content: "🚫 抱歉，亲爱的，你没有管理服务器的权限来重新抽取赢家。(Sorry, my dear, you don't have permission to manage the server to reroll a winner.)",
+                content: "🚫 Sorry, you don't have permission to manage the server to reroll a winner.",
                 ephemeral: true
             });
         }

@@ -6,7 +6,7 @@ module.exports = {
         .setDescription('Replies with Pong and latency!'),
     async execute(interaction) {
         try {
-            const sent = await interaction.reply({ content: 'Pinging... 핑핑...', fetchReply: true });
+            const sent = await interaction.reply({ content: 'Pinging...', fetchReply: true });
             const latency = sent.createdTimestamp - interaction.createdTimestamp;
             const apiLatency = Math.round(interaction.client.ws.ping);
 

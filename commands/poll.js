@@ -60,7 +60,7 @@ module.exports = {
         }
 
         if (options.length < 2) {
-            return interaction.reply({ content: '请至少提供两个选项。(Please provide at least two options.)', ephemeral: true });
+            return interaction.reply({ content: 'Please provide at least two options.', ephemeral: true });
         }
 
         const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];

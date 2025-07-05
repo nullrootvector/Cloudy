@@ -29,7 +29,7 @@ module.exports = {
         const userOpenTicket = tickets.find(ticket => ticket.userId === user.id && ticket.status === 'open');
         if (userOpenTicket) {
             return interaction.reply({
-                content: `你已经有一个开放的工单了：<#${userOpenTicket.channelId}>。(You already have an open ticket: <#${userOpenTicket.channelId}>.)`,
+                content: `You already have an open ticket: <#${userOpenTicket.channelId}>.`,
                 ephemeral: true
             });
         }

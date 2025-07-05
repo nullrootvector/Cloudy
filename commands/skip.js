@@ -1,4 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { useQueue } = require('discord-player');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -6,17 +7,15 @@ module.exports = {
         .setDescription('Skips the current song.'),
 
     async execute(interaction) {
-        const guildId = interaction.guild.id;
-        const serverQueue = interaction.client.queue.get(guildId);
+        const queue = useQueue(interaction.guild.id);
 
-        if (!serverQueue || !serverQueue.songs.length) {
-            return interaction.reply({
-                content: '队列中没有歌曲可以跳过。(There are no songs in the queue to skip.)',
-                ephemeral: true
-            });
+        if (!queue || !queue.isPlaying()) {
+            return interaction.reply({ content: 'There is no song playing to skip.', ephemeral: true });
         }
 
-        serverQueue.player.stop(); // This will trigger the 'idle' event and play the next song
-        await interaction.reply('歌曲已跳过。(Song skipped.)');
+        const currentTrack = queue.currentTrack;
+        queue.node.skip();
+
+        return interaction.reply(`Skipped **${currentTrack.title}**.`);
     },
 };

@@ -1,59 +1,70 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 
 module.exports = {
+    // Define the command's data for Discord's API
     data: new SlashCommandBuilder()
-        .setName('help')
-        .setDescription('Lists all available commands or provides info about a specific command.')
+        .setName('help') // The name of the slash command
+        .setDescription('Lists all available commands or provides info about a specific command.') // The description of the command
         .addStringOption(option =>
-            option.setName('command')
-                .setDescription('The command to get info about')
-                .setRequired(false)),
-    async execute(interaction) {
-        const { client } = interaction;
-        const commandName = interaction.options.getString('command');
+            option.setName('command') // Define a string option for a specific command name
+                .setDescription('The command to get info about') // Description for the option
+                .setRequired(false)), // This option is optional
 
+    // The execute function contains the command's logic
+    async execute(interaction) {
+        const { client } = interaction; // Destructure the client object from the interaction
+        const commandName = interaction.options.getString('command'); // Get the command name provided by the user
+
+        // Check if a specific command name was provided
         if (commandName) {
             // Handle specific command help
+            // Get the command from the client's commands collection (case-insensitive)
             const command = client.commands.get(commandName.toLowerCase());
 
+            // If the command is not found, inform the user
             if (!command) {
                 return interaction.reply({
-                    content: `我找不到名为 \`${commandName}\` 的命令。(I couldn't find a command named \`${commandName}\`.)`,
-                    ephemeral: true
+                    content: `I couldn't find a command named ${commandName}.`,
+                    ephemeral: true // Only visible to the user who ran the command
                 });
             }
 
+            // Create an embed message to display information about the specific command
             const embed = new EmbedBuilder()
-                .setColor('#0099ff')
-                .setTitle(`/${command.data.name} Command Info`)
-                .setDescription(command.data.description || '没有提供描述。(No description provided.)');
+                .setColor('#0099ff') // Blue color
+                .setTitle(`/${command.data.name} Command Info`) // Title showing the command name
+                .setDescription(command.data.description || '没有提供描述。(No description provided.)'); // Command description or a default message
 
-            // You can add more details here if your commands have more properties like options, usage, etc.
+            // If the command has options, add them to the embed
             if (command.data.options && command.data.options.length > 0) {
                 const options = command.data.options.map(opt => {
                     let optString = `\`${opt.name}\`: ${opt.description}`;
-                    if (opt.required) optString += ' (Required)';
+                    if (opt.required) optString += ' (Required)'; // Indicate if the option is required
                     return optString;
-                }).join('\n');
-                embed.addFields({ name: 'Options (选项)', value: options });
+                }).join('\n'); // Join all option strings with a newline
+                embed.addFields({ name: 'Options (选项)', value: options }); // Add a field for options
             }
 
+            // Reply to the interaction with the command info embed
             return interaction.reply({ embeds: [embed], ephemeral: true });
 
         } else {
-            // List all commands
+            // List all commands if no specific command name was provided
+            // Map through all commands in the client's collection and format them
             const commands = client.commands.map(command => `\`/${command.data.name}\` - ${command.data.description || '没有描述。(No description.)'}`);
 
+            // Create an embed message to list all available commands
             const embed = new EmbedBuilder()
-                .setColor('#0099ff')
-                .setTitle('🤖 Available Commands (可用命令)')
+                .setColor('#0099ff') // Blue color
+                .setTitle('🤖 Available Commands (可用命令)') // Title of the embed
                 .setDescription(
                     `以下是我所有的命令：\n(Here are all my commands:)\n\n${commands.join('\n')}\n\n` +
                     `你可以使用 \`/help [命令名称]\` 来获取特定命令的更多信息。\n(You can use \`/help [command name]\` for more info on a specific command.)`
                 )
-                .setFooter({ text: '由 Gemini CLI 生成 (Generated by Gemini CLI)' })
-                .setTimestamp();
+                .setFooter({ text: '由 ❤️‍🔥 生成 (Generated by ❤️‍🔥)' })
+                .setTimestamp(); // Add a timestamp to the embed
 
+            // Reply to the interaction with the list of commands embed
             return interaction.reply({ embeds: [embed], ephemeral: true });
         }
     },

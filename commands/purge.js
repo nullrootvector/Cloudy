@@ -15,7 +15,7 @@ module.exports = {
         // Permission Check 1: User must have ManageMessages permission
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
             return interaction.reply({
-                content: "🚫 抱歉，亲爱的，你没有管理消息的权限。(Sorry, my dear, you don't have permission to manage messages.)",
+                content: "🚫 Sorry, you don't have permission to manage messages.",
                 ephemeral: true
             });
         }
