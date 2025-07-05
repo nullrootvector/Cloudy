@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, PermissionsBitField, EmbedBuilder } = require('discord.js');
-const fs = require('node:fs');
-const path = require('node:path');
+const db = require('../database.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -22,7 +21,7 @@ module.exports = {
         // Permission Check: User must have ModerateMembers permission
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
             return interaction.reply({
-                content: "🚫 抱歉，亲爱的，你没有警告成员的权限。(Sorry, my dear, you don't have permission to warn members.)",
+                content: "🚫 You do not have permission to warn members.",
                 ephemeral: true
             });
         }
@@ -30,7 +29,7 @@ module.exports = {
         // Check if the bot can warn the member (role hierarchy)
         if (!memberToWarn.moderatable) {
             return interaction.reply({
-                content: "我无法警告此用户。他们可能有更高的角色，或者我没有足够的权限。(I cannot warn this user. They might have a higher role, or I don't have permission.)",
+                content: "I cannot warn this user. They may have a higher role than me or I do not have the permission to.",
                 ephemeral: true
             });
         }
@@ -38,41 +37,24 @@ module.exports = {
         // Check if the command issuer is trying to warn themselves
         if (memberToWarn.id === interaction.user.id) {
             return interaction.reply({
-                content: "你不能警告自己，我的朋友！(You can't warn yourself, my friend!)",
+                content: "You cannot warn yourself.",
                 ephemeral: true
             });
         }
 
         try {
-            const warningsPath = path.join(__dirname, '..', 'warnings.json');
-            let warnings = [];
-            try {
-                const data = fs.readFileSync(warningsPath, 'utf8');
-                warnings = JSON.parse(data);
-            } catch (readError) {
-                console.error('Error reading warnings.json:', readError);
-            }
-
-            const newWarning = {
-                userId: memberToWarn.id,
-                userName: memberToWarn.user.tag,
-                moderatorId: interaction.user.id,
-                moderatorName: interaction.user.tag,
-                reason: reason,
-                timestamp: new Date().toISOString()
-            };
-            warnings.push(newWarning);
-
-            fs.writeFileSync(warningsPath, JSON.stringify(warnings, null, 2), 'utf8');
+            const stmt = db.prepare('INSERT INTO warnings (userId, guildId, reason, moderatorId, timestamp) VALUES (?, ?, ?, ?, ?)');
+            stmt.run(memberToWarn.id, interaction.guild.id, reason, interaction.user.id, Date.now());
+            stmt.finalize();
 
             const warnEmbed = new EmbedBuilder()
                 .setColor('#FFD700') // Gold for warning
                 .setTitle('⚠️ Member Warned')
                 .setDescription(`${memberToWarn.user.tag} has been warned.`)
                 .addFields(
-                    { name: 'Warned User (被警告用户)', value: `${memberToWarn.user.tag} (${memberToWarn.id})`, inline: true },
-                    { name: 'Moderator (管理员)', value: interaction.user.tag, inline: true },
-                    { name: 'Reason (理由)', value: reason }
+                    { name: 'Warned User', value: `${memberToWarn.user.tag} (${memberToWarn.id})`, inline: true },
+                    { name: 'Moderator', value: interaction.user.tag, inline: true },
+                    { name: 'Reason', value: reason }
                 )
                 .setTimestamp()
                 .setFooter({ text: `Server: ${interaction.guild.name}` });
@@ -86,12 +68,12 @@ module.exports = {
                 if (logChannel) {
                     const logEmbed = new EmbedBuilder()
                         .setColor('#FFD700')
-                        .setTitle('⚠️ Member Warned (日志)')
+                        .setTitle('⚠️ Member Warned (Log)')
                         .setDescription(`${memberToWarn.user.tag} has been warned.`)
                         .addFields(
-                            { name: 'Warned User (被警告用户)', value: `${memberToWarn.user.tag} (${memberToWarn.id})`, inline: true },
-                            { name: 'Moderator (管理员)', value: interaction.user.tag, inline: true },
-                            { name: 'Reason (理由)', value: reason }
+                            { name: 'Warned User', value: `${memberToWarn.user.tag} (${memberToWarn.id})`, inline: true },
+                            { name: 'Moderator', value: interaction.user.tag, inline: true },
+                            { name: 'Reason', value: reason }
                         )
                         .setTimestamp()
                         .setFooter({ text: `User ID: ${memberToWarn.id}` });
@@ -101,7 +83,7 @@ module.exports = {
 
             // Optionally, DM the warned user
             try {
-                await memberToWarn.send(`你已被警告于服务器 **${interaction.guild.name}**。\n理由：${reason}`);
+                await memberToWarn.send(`You have been warned in **${interaction.guild.name}** for the following reason: ${reason}`);
             } catch (dmError) {
                 console.warn(`Could not DM ${memberToWarn.user.tag} about their warning: ${dmError}`);
             }
@@ -109,9 +91,9 @@ module.exports = {
         } catch (error) {
             console.error(`Error warning member ${memberToWarn.user.tag}:`, error);
             if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: "执行警告操作时发生错误。(An error occurred while trying to warn the member.)", ephemeral: true });
+                await interaction.followUp({ content: "An error occurred while trying to warn the member.", ephemeral: true });
             } else {
-                await interaction.reply({ content: "执行警告操作时发生错误。(An error occurred while trying to warn the member.)", ephemeral: true });
+                await interaction.reply({ content: "An error occurred while trying to warn the member.", ephemeral: true });
             }
         }
     },

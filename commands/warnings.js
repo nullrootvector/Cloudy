@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const fs = require('node:fs');
-const path = require('node:path');
+const db = require('../database.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -13,43 +12,46 @@ module.exports = {
 
     async execute(interaction) {
         const user = interaction.options.getUser('target') || interaction.user;
-        const warningsPath = path.join(__dirname, '..', 'warnings.json');
-        let warnings = [];
 
-        try {
-            const data = fs.readFileSync(warningsPath, 'utf8');
-            warnings = JSON.parse(data);
-        } catch (readError) {
-            console.error('Error reading warnings.json:', readError);
-            return interaction.reply({
-                content: 'Could not read warning data.',
-                ephemeral: true
-            });
-        }
+        db.all('SELECT reason, moderatorId, timestamp FROM warnings WHERE userId = ? AND guildId = ? ORDER BY timestamp DESC', [user.id, interaction.guild.id], async (err, rows) => {
+            if (err) {
+                console.error('Error fetching warnings from database:', err);
+                return interaction.reply({
+                    content: 'An error occurred while trying to fetch warnings.',
+                    ephemeral: true
+                });
+            }
 
-        const userWarnings = warnings.filter(warn => warn.userId === user.id);
+            if (rows.length === 0) {
+                return interaction.reply({
+                    content: `${user.tag} has no warnings.`,
+                    ephemeral: true
+                });
+            }
 
-        if (userWarnings.length === 0) {
-            return interaction.reply({
-                content: `${user.tag} 没有警告。(No warnings for ${user.tag}.)`,
-                ephemeral: true
-            });
-        }
+            const warningsEmbed = new EmbedBuilder()
+                .setColor('#FFD700')
+                .setTitle(`⚠️ Warnings for ${user.tag}`)
+                .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 512 }))
+                .setDescription(`Total warnings: ${rows.length}`)
+                .setTimestamp()
+                .setFooter({ text: `Requested by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
 
-        const warningsEmbed = new EmbedBuilder()
-            .setColor('#FFD700')
-            .setTitle(`⚠️ Warnings for ${user.tag}`)
-            .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 512 }))
-            .setDescription(`Total warnings: ${userWarnings.length}\n\n`)
-            .setTimestamp()
-            .setFooter({ text: `Requested by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });
+            for (const [index, row] of rows.entries()) {
+                let moderatorTag = 'Unknown Moderator';
+                try {
+                    const moderator = await interaction.guild.members.fetch(row.moderatorId);
+                    moderatorTag = moderator.user.tag;
+                } catch (fetchError) {
+                    console.warn(`Could not fetch moderator ${row.moderatorId}:`, fetchError);
+                }
 
-        userWarnings.forEach((warn, index) => {
-            warningsEmbed.addFields(
-                { name: `Warning ${index + 1}`, value: `**Reason (理由):** ${warn.reason}\n**Moderator (管理员):** ${warn.moderatorName}\n**Date (日期):** <t:${Math.floor(new Date(warn.timestamp).getTime() / 1000)}:F>` }
-            );
+                warningsEmbed.addFields(
+                    { name: `Warning ${index + 1}`, value: `**Reason:** ${row.reason}\n**Moderator:** ${moderatorTag}\n**Date:** <t:${Math.floor(row.timestamp / 1000)}:F>` }
+                );
+            }
+
+            await interaction.reply({ embeds: [warningsEmbed], ephemeral: false });
         });
-
-        await interaction.reply({ embeds: [warningsEmbed], ephemeral: false });
     },
 };
