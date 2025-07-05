@@ -66,6 +66,71 @@ db.serialize(() => {
             console.error(err.message);
         }
     });
+
+    db.run(`CREATE TABLE IF NOT EXISTS tickets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guildId TEXT NOT NULL,
+        userId TEXT NOT NULL,
+        channelId TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        timestamp INTEGER NOT NULL
+    )`, (err) => {
+        if (err) {
+            console.error(err.message);
+        }
+    });
+
+    db.run(`CREATE TABLE IF NOT EXISTS reaction_roles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guildId TEXT NOT NULL,
+        messageId TEXT NOT NULL,
+        emoji TEXT NOT NULL,
+        roleId TEXT NOT NULL
+    )`, (err) => {
+        if (err) {
+            console.error(err.message);
+        }
+    });
+
+    db.run(`CREATE TABLE IF NOT EXISTS tempbans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId TEXT NOT NULL,
+        guildId TEXT NOT NULL,
+        unbanTime INTEGER NOT NULL,
+        reason TEXT,
+        moderatorId TEXT NOT NULL
+    )`, (err) => {
+        if (err) {
+            console.error(err.message);
+        }
+    });
+
+    db.run(`CREATE TABLE IF NOT EXISTS custom_commands (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guildId TEXT NOT NULL,
+        commandName TEXT NOT NULL,
+        commandResponse TEXT NOT NULL
+    )`, (err) => {
+        if (err) {
+            console.error(err.message);
+        }
+    });
+
+    db.run(`CREATE TABLE IF NOT EXISTS giveaways (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        messageId TEXT NOT NULL,
+        channelId TEXT NOT NULL,
+        guildId TEXT NOT NULL,
+        endTime INTEGER NOT NULL,
+        prize TEXT NOT NULL,
+        winnerCount INTEGER NOT NULL,
+        hostId TEXT NOT NULL,
+        ended BOOLEAN NOT NULL DEFAULT 0
+    )`, (err) => {
+        if (err) {
+            console.error(err.message);
+        }
+    });
 });
 
 module.exports = db;

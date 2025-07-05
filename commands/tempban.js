@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, PermissionsBitField, EmbedBuilder } = require('discord.js');
-const fs = require('node:fs');
-const path = require('node:path');
+const db = require('../database.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -24,34 +23,30 @@ module.exports = {
         const duration = interaction.options.getInteger('duration'); // in minutes
         const reason = interaction.options.getString('reason') || 'No reason provided';
 
-        // Permission Check 1: User must have BanMembers permission
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers)) {
             return interaction.reply({
-                content: "🚫 抱歉，亲爱的，你没有临时封禁成员的权限。(Sorry, my dear, you don't have permission to tempban members.)",
+                content: "🚫 Sorry, you don't have permission to tempban members.",
                 ephemeral: true
             });
         }
 
-        // Permission Check 2: Bot must have BanMembers permission
         if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.BanMembers)) {
             return interaction.reply({
-                content: "😥 我没有足够的权限来临时封禁成员。(I don't have enough permissions to tempban members.)",
+                content: "😥 I don't have enough permissions to tempban members.",
                 ephemeral: true
             });
         }
 
-        // Check if the bot can ban the member (role hierarchy)
         if (!memberToBan.bannable) {
             return interaction.reply({
-                content: "我无法临时封禁此用户。他们可能有更高的角色，或者我没有足够的权限。(I cannot tempban this user. They might have a higher role, or I don't have permission.)",
+                content: "I cannot tempban this user. They might have a higher role, or I don't have permission.",
                 ephemeral: true
             });
         }
 
-        // Check if the command issuer is trying to ban themselves
         if (memberToBan.id === interaction.user.id) {
             return interaction.reply({
-                content: "你不能临时封禁自己，我的朋友！(You can't tempban yourself, my friend!)",
+                content: "You can't tempban yourself, my friend!",
                 ephemeral: true
             });
         }
@@ -59,38 +54,24 @@ module.exports = {
         try {
             const unbanTime = Date.now() + duration * 60 * 1000; // Calculate unban time in milliseconds
 
-            // Ban the member
             await memberToBan.ban({ reason: `Temporary ban: ${reason}` });
 
-            // Store tempban information
-            const tempBansPath = path.join(__dirname, '..', 'tempbans.json');
-            let tempBans = [];
-            try {
-                const data = fs.readFileSync(tempBansPath, 'utf8');
-                tempBans = JSON.parse(data);
-            } catch (readError) {
-                console.error('Error reading tempbans.json:', readError);
-            }
-
-            tempBans.push({
-                userId: memberToBan.id,
-                guildId: interaction.guild.id,
-                unbanTime: unbanTime,
-                reason: reason,
-                moderatorId: interaction.user.id,
-                moderatorTag: interaction.user.tag
+            db.run('INSERT INTO tempbans (userId, guildId, unbanTime, reason, moderatorId) VALUES (?, ?, ?, ?, ?)', [memberToBan.id, interaction.guild.id, unbanTime, reason, interaction.user.id], (err) => {
+                if (err) {
+                    console.error('Error storing tempban:', err);
+                    return interaction.reply({ content: 'An error occurred while storing the tempban.', ephemeral: true });
+                }
             });
-            fs.writeFileSync(tempBansPath, JSON.stringify(tempBans, null, 2), 'utf8');
 
             const tempBanEmbed = new EmbedBuilder()
-                .setColor('#FF4500') // OrangeRed for tempban
+                .setColor('#FF4500')
                 .setTitle('⏳ Member Temporarily Banned')
                 .setDescription(`${memberToBan.user.tag} has been temporarily banned from the server.`)
                 .addFields(
-                    { name: 'Banned User (被临时封禁用户)', value: `${memberToBan.user.tag} (${memberToBan.id})`, inline: true },
-                    { name: 'Moderator (管理员)', value: interaction.user.tag, inline: true },
-                    { name: 'Duration (时长)', value: `${duration} minutes`, inline: true },
-                    { name: 'Reason (理由)', value: reason }
+                    { name: 'Banned User', value: `${memberToBan.user.tag} (${memberToBan.id})`, inline: true },
+                    { name: 'Moderator', value: interaction.user.tag, inline: true },
+                    { name: 'Duration', value: `${duration} minutes`, inline: true },
+                    { name: 'Reason', value: reason }
                 )
                 .setTimestamp()
                 .setFooter({ text: `Server: ${interaction.guild.name}` });
@@ -98,19 +79,18 @@ module.exports = {
             await interaction.reply({ embeds: [tempBanEmbed] });
             console.log(`${interaction.user.tag} tempbanned ${memberToBan.user.tag} for ${duration} minutes for: ${reason}.`);
 
-            // Send log to moderation channel
             if (config.MOD_LOG_CHANNEL_ID) {
                 const logChannel = interaction.guild.channels.cache.get(config.MOD_LOG_CHANNEL_ID);
                 if (logChannel) {
                     const logEmbed = new EmbedBuilder()
                         .setColor('#FF4500')
-                        .setTitle('⏳ Member Temporarily Banned (日志)')
+                        .setTitle('⏳ Member Temporarily Banned (Log)')
                         .setDescription(`${memberToBan.user.tag} has been temporarily banned.`)
                         .addFields(
-                            { name: 'Banned User (被临时封禁用户)', value: `${memberToBan.user.tag} (${memberToBan.id})`, inline: true },
-                            { name: 'Moderator (管理员)', value: interaction.user.tag, inline: true },
-                            { name: 'Duration (时长)', value: `${duration} minutes`, inline: true },
-                            { name: 'Reason (理由)', value: reason }
+                            { name: 'Banned User', value: `${memberToBan.user.tag} (${memberToBan.id})`, inline: true },
+                            { name: 'Moderator', value: interaction.user.tag, inline: true },
+                            { name: 'Duration', value: `${duration} minutes`, inline: true },
+                            { name: 'Reason', value: reason }
                         )
                         .setTimestamp()
                         .setFooter({ text: `User ID: ${memberToBan.id}` });
@@ -118,9 +98,8 @@ module.exports = {
                 }
             }
 
-            // Optionally, DM the banned user
             try {
-                await memberToBan.send(`你已被临时封禁于服务器 **${interaction.guild.name}**，时长 ${duration} 分钟。\n理由：${reason}`);
+                await memberToBan.send(`You have been temporarily banned from **${interaction.guild.name}** for ${duration} minutes. Reason: ${reason}`);
             } catch (dmError) {
                 console.warn(`Could not DM ${memberToBan.user.tag} about their tempban: ${dmError}`);
             }
@@ -128,9 +107,9 @@ module.exports = {
         } catch (error) {
             console.error(`Error tempbanning member ${memberToBan.user.tag}:`, error);
             if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: "执行临时封禁操作时发生错误。(An error occurred while trying to tempban the member.)", ephemeral: true });
+                await interaction.followUp({ content: "An error occurred while trying to tempban the member.", ephemeral: true });
             } else {
-                await interaction.reply({ content: "执行临时封禁操作时发生错误。(An error occurred while trying to tempban the member.)", ephemeral: true });
+                await interaction.reply({ content: "An error occurred while trying to tempban the member.", ephemeral: true });
             }
         }
     },

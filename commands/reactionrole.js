@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, PermissionsBitField, EmbedBuilder } = require('discord.js');
-const fs = require('node:fs');
-const path = require('node:path');
+const db = require('../database.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -20,7 +19,6 @@ module.exports = {
                 .setRequired(true)),
 
     async execute(interaction, config) {
-        // Permission Check: User must have ManageRoles permission
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
             return interaction.reply({
                 content: "🚫 Sorry, you don't have permission to manage roles.",
@@ -31,6 +29,7 @@ module.exports = {
         const messageId = interaction.options.getString('message_id');
         const role = interaction.options.getRole('role');
         const emoji = interaction.options.getString('emoji');
+        const guildId = interaction.guild.id;
 
         try {
             const channel = interaction.channel;
@@ -38,53 +37,39 @@ module.exports = {
 
             if (!message) {
                 return interaction.reply({
-                    content: '找不到指定ID的消息。(Could not find a message with that ID.)',
+                    content: 'Could not find a message with that ID.',
                     ephemeral: true
                 });
             }
 
-            // Add the reaction to the message
             await message.react(emoji);
 
-            // Store the reaction role configuration
-            const reactionRolesPath = path.join(__dirname, '..', 'reactionroles.json');
-            let reactionRoles = [];
-            try {
-                const data = fs.readFileSync(reactionRolesPath, 'utf8');
-                reactionRoles = JSON.parse(data);
-            } catch (readError) {
-                console.error('Error reading reactionroles.json:', readError);
-            }
+            db.run('INSERT INTO reaction_roles (guildId, messageId, emoji, roleId) VALUES (?, ?, ?, ?)', [guildId, messageId, emoji, role.id], (err) => {
+                if (err) {
+                    console.error('Error storing reaction role:', err);
+                    return interaction.reply({ content: 'An error occurred while setting up the reaction role.', ephemeral: true });
+                }
 
-            reactionRoles.push({
-                guildId: interaction.guild.id,
-                channelId: channel.id,
-                messageId: messageId,
-                roleId: role.id,
-                emoji: emoji
+                const embed = new EmbedBuilder()
+                    .setColor('#00FF00')
+                    .setTitle('✅ Reaction Role Setup')
+                    .setDescription(`Reaction role successfully set up for message [${messageId}].`)
+                    .addFields(
+                        { name: 'Message ID', value: messageId, inline: true },
+                        { name: 'Role', value: role.name, inline: true },
+                        { name: 'Emoji', value: emoji, inline: true }
+                    )
+                    .setTimestamp();
+
+                interaction.reply({ embeds: [embed] });
             });
-
-            fs.writeFileSync(reactionRolesPath, JSON.stringify(reactionRoles, null, 2), 'utf8');
-
-            const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle('✅ Reaction Role Setup')
-                .setDescription(`已成功为消息 [${messageId}] 设置反应角色。\n(Reaction role successfully set up for message [${messageId}].)`)
-                .addFields(
-                    { name: 'Message ID (消息ID)', value: messageId, inline: true },
-                    { name: 'Role (角色)', value: role.name, inline: true },
-                    { name: 'Emoji (表情符号)', value: emoji, inline: true }
-                )
-                .setTimestamp();
-
-            await interaction.reply({ embeds: [embed] });
 
         } catch (error) {
             console.error('Error setting up reaction role:', error);
             if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: '设置反应角色时发生错误。(An error occurred while setting up the reaction role.)', ephemeral: true });
+                await interaction.followUp({ content: 'An error occurred while setting up the reaction role.', ephemeral: true });
             } else {
-                await interaction.reply({ content: '设置反应角色时发生错误。(An error occurred while setting up the reaction role.)', ephemeral: true });
+                await interaction.reply({ content: 'An error occurred while setting up the reaction role.', ephemeral: true });
             }
         }
     },

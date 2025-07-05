@@ -115,32 +115,22 @@ client.once(Events.ClientReady, readyClient => {
 
     // Start checking for expired tempbans every minute
     setInterval(async () => {
-        const tempBansPath = path.join(__dirname, 'tempbans.json'); // Path to tempbans data file
-        let tempBans = [];
-        try {
-            const data = fs.readFileSync(tempBansPath, 'utf8'); // Read tempbans data
-            tempBans = JSON.parse(data); // Parse JSON data
-        } catch (readError) {
-            console.error('Error reading tempbans.json for unban check:', readError);
-            return;
-        }
+        const now = Date.now();
+        db.all('SELECT * FROM tempbans WHERE unbanTime <= ?', [now], async (err, expiredBans) => {
+            if (err) {
+                console.error('Error fetching expired tempbans:', err);
+                return;
+            }
 
-        const now = Date.now(); // Current timestamp
-        const updatedTempBans = []; // Array to store active tempbans
-        let unbannedCount = 0; // Counter for unbanned users
-
-        for (const ban of tempBans) {
-            if (ban.unbanTime <= now) { // Check if ban has expired
+            for (const ban of expiredBans) {
                 try {
-                    const guild = await client.guilds.fetch(ban.guildId); // Fetch the guild
+                    const guild = await client.guilds.fetch(ban.guildId);
                     if (guild) {
-                        const bannedUser = await guild.bans.fetch(ban.userId); // Fetch the banned user
+                        const bannedUser = await guild.bans.fetch(ban.userId);
                         if (bannedUser) {
-                            await guild.members.unban(ban.userId, 'Temporary ban expired'); // Unban the user
+                            await guild.members.unban(ban.userId, 'Temporary ban expired');
                             console.log(`Automatically unbanned ${bannedUser.user.tag} from ${guild.name}.`);
-                            unbannedCount++;
 
-                            // Send log to moderation channel if configured
                             if (config.MOD_LOG_CHANNEL_ID) {
                                 const logChannel = guild.channels.cache.get(config.MOD_LOG_CHANNEL_ID);
                                 if (logChannel) {
@@ -159,93 +149,81 @@ client.once(Events.ClientReady, readyClient => {
                             }
                         }
                     }
+                    db.run('DELETE FROM tempbans WHERE id = ?', [ban.id], (deleteErr) => {
+                        if (deleteErr) console.error('Error deleting expired tempban:', deleteErr);
+                    });
                 } catch (error) {
                     console.error(`Error during automatic unban for user ${ban.userId} in guild ${ban.guildId}:`, error);
                 }
-            } else {
-                updatedTempBans.push(ban); // Keep active bans in the list
             }
-        }
-
-        if (unbannedCount > 0) {
-            fs.writeFileSync(tempBansPath, JSON.stringify(updatedTempBans, null, 2), 'utf8'); // Write updated tempbans back to file
-        }
+        });
     }, 60 * 1000); // Check every 1 minute
 
     // Start checking for ended giveaways every 30 seconds
     setInterval(async () => {
-        const giveawaysPath = path.join(__dirname, 'giveaways.json'); // Path to giveaways data file
-        let giveaways = [];
-        try {
-            const data = fs.readFileSync(giveawaysPath, 'utf8'); // Read giveaways data
-            giveaways = JSON.parse(data); // Parse JSON data
-        } catch (readError) {
-            console.error('Error reading giveaways.json for giveaway check:', readError);
-            return;
-        }
+        const now = Date.now();
+        db.all('SELECT * FROM giveaways WHERE ended = 0 AND endTime <= ?', [now], async (err, endedGiveaways) => {
+            if (err) {
+                console.error('Error fetching ended giveaways:', err);
+                return;
+            }
 
-        const now = Date.now(); // Current timestamp
-        const updatedGiveaways = []; // Array to store active giveaways
-        for (const giveaway of giveaways) {
-            if (giveaway.status === 'active' && giveaway.endTime <= now) { // Check if giveaway is active and ended
+            for (const giveaway of endedGiveaways) {
                 try {
-                    const guild = await client.guilds.fetch(giveaway.guildId); // Fetch the guild
-                    const channel = guild.channels.cache.get(giveaway.channelId); // Get the giveaway channel
-                    const message = await channel.messages.fetch(giveaway.messageId); // Fetch the giveaway message
-                    const reaction = message.reactions.cache.get('🎉'); // Get the reaction for participants
+                    const guild = await client.guilds.fetch(giveaway.guildId);
+                    const channel = guild.channels.cache.get(giveaway.channelId);
+                    const message = await channel.messages.fetch(giveaway.messageId);
+                    const reaction = message.reactions.cache.get('🎉');
                     if (!reaction) {
                         console.warn(`Giveaway message ${giveaway.messageId} has no 🎉 reaction.`);
-                        continue; // Skip to next giveaway if no reaction
+                        db.run('UPDATE giveaways SET ended = 1 WHERE id = ?', [giveaway.id]); // Mark as ended even if no reaction
+                        continue;
                     }
-                    const users = await reaction.users.fetch(); // Fetch users who reacted
-                    const participants = users.filter(user => !user.bot).map(user => user); // Filter out bots
+                    const users = await reaction.users.fetch();
+                    const participants = users.filter(user => !user.bot).map(user => user);
 
                     if (participants.length === 0) {
-                        // No participants, no winner
                         const noWinnerEmbed = new EmbedBuilder()
                             .setColor('#FF0000')
                             .setTitle('🎉 GIVEAWAY ENDED! 🎉')
                             .setDescription(`**${giveaway.prize}**\n\nNo participants, so no winner.`)
                             .setTimestamp();
                         await channel.send({ embeds: [noWinnerEmbed] });
-                        continue; // Skip to next giveaway, effectively removing it
+                        db.run('UPDATE giveaways SET ended = 1 WHERE id = ?', [giveaway.id]);
+                        continue;
                     }
 
                     const winners = [];
                     for (let i = 0; i < giveaway.winnerCount; i++) {
                         if (participants.length === 0) break;
                         const randomIndex = Math.floor(Math.random() * participants.length);
-                        winners.push(participants.splice(randomIndex, 1)[0]); // Select random winner
+                        winners.push(participants.splice(randomIndex, 1)[0]);
                     }
 
-                    const winnerMentions = winners.map(winner => `<@${winner.id}>`).join(', '); // Mention winners
+                    const winnerMentions = winners.map(winner => `<@${winner.id}>`).join(', ');
                     const winnerEmbed = new EmbedBuilder()
                         .setColor('#00FF00')
                         .setTitle('🎉 GIVEAWAY ENDED! 🎉')
                         .setDescription(`Congratulations ${winnerMentions}! You won the **${giveaway.prize}**!\n\n[Go to giveaway message](<${message.url}>)`)
                         .setTimestamp();
                     await channel.send({ embeds: [winnerEmbed] });
-                    // Giveaway is now complete and announced, so it should be removed from the list
-                    // Do NOT push to updatedGiveaways
+                    db.run('UPDATE giveaways SET ended = 1 WHERE id = ?', [giveaway.id]);
                 } catch (error) {
                     console.error(`Error ending giveaway ${giveaway.messageId}:`, error);
-                    // If there's an error, it's still considered processed and should be removed
-                    // Do NOT push to updatedGiveaways
+                    db.run('UPDATE giveaways SET ended = 1 WHERE id = ?', [giveaway.id]); // Mark as ended on error too
                 }
-            } else {
-                // If the giveaway is not active or not yet ended, keep it in the list
-                updatedGiveaways.push(giveaway);
             }
-        }
-        if (giveaways.length !== updatedGiveaways.length) {
-            fs.writeFileSync(giveawaysPath, JSON.stringify(updatedGiveaways, null, 2), 'utf8'); // Write updated giveaways back to file
-        }
+        });
     }, 30 * 1000); // Check every 30 seconds
 
-    // Save levels data every 30 seconds
+    // Save levels data every 30 seconds (this will be removed or modified later)
+    // This is a placeholder for now, as levels are handled per message.
+    // The levels data is updated on message create and voice state update, so a separate interval save is not strictly necessary
+    // if we update the database directly in those event handlers.
+    // For now, I'll keep it as is, but it will be removed in the next step.
     setInterval(() => {
-        fs.writeFileSync(levelsPath, JSON.stringify(levels, null, 2), 'utf8');
-    }, 30 * 1000); // Save levels every 30 seconds
+        // This block will be removed in the next step as levels are now handled by the database directly.
+    }, 30 * 1000);
 
     // Event listener for when a new member joins the guild
     client.on(Events.GuildMemberAdd, async member => {
@@ -270,99 +248,60 @@ client.once(Events.ClientReady, readyClient => {
 
 
 // Load custom commands from customcommands.json on startup
-let customCommands = [];
-try {
-    const customCommandsPath = path.join(__dirname, 'customcommands.json');
-    const data = fs.readFileSync(customCommandsPath, 'utf8');
-    customCommands = JSON.parse(data);
-} catch (readError) {
-    console.error('Error reading customcommands.json on startup:', readError);
-}
-
 // Load levels data from levels.json on startup
-const levelsPath = path.join(__dirname, 'levels.json');
-let levels = {};
-try {
-    const data = fs.readFileSync(levelsPath, 'utf8');
-    levels = JSON.parse(data);
-} catch (readError) {
-    console.error('Error reading levels.json on startup:', readError);
-    if (readError.code === 'ENOENT') {
-        fs.writeFileSync(levelsPath, JSON.stringify({}, null, 2)); // Create empty file if not found
-    }
-}
-
-// Load bad words list from badwords.json on startup
-const badwordsPath = path.join(__dirname, 'badwords.json');
-let badwords = [];
-try {
-    const data = fs.readFileSync(badwordsPath, 'utf8');
-    badwords = JSON.parse(data);
-} catch (readError) {
-    console.error('Error reading badwords.json on startup:', readError);
-    if (readError.code === 'ENOENT') {
-        fs.writeFileSync(badwordsPath, JSON.stringify([], null, 2)); // Create empty file if not found
-    }
-}
-
-// Load reaction roles from reactionroles.json on startup
-const reactionRolesPath = path.join(__dirname, 'reactionroles.json');
-let reactionRoles = [];
-try {
-    const data = fs.readFileSync(reactionRolesPath, 'utf8');
-    reactionRoles = JSON.parse(data);
-} catch (readError) {
-    console.error('Error reading reactionroles.json on startup:', readError);
-    if (readError.code === 'ENOENT') {
-        fs.writeFileSync(reactionRolesPath, JSON.stringify([], null, 2)); // Create empty file if not found
-    }
-}
-
-// Load economy data from economy.json on startup
-const economyPath = path.join(__dirname, 'economy.json');
-let economy = {};
-try {
-    const data = fs.readFileSync(economyPath, 'utf8');
-    economy = JSON.parse(data);
-} catch (readError) {
-    console.error('Error reading economy.json on startup:', readError);
-    if (readError.code === 'ENOENT') {
-        fs.writeFileSync(economyPath, JSON.stringify({}, null, 2)); // Create empty file if not found
-    }
-}
-
-// Load shop data from shop.json on startup
-const shopPath = path.join(__dirname, 'shop.json');
-let shop = [];
-try {
-    const data = fs.readFileSync(shopPath, 'utf8');
-    shop = JSON.parse(data);
-} catch (readError) {
-    console.error('Error reading shop.json on startup:', readError);
-    if (readError.code === 'ENOENT') {
-        fs.writeFileSync(shopPath, JSON.stringify([], null, 2)); // Create empty file if not found
-    }
-}
+const db = require('./database.js');
 
 // Event listener for slash command interactions
 client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return; // Only process chat input commands
 
     // Handle custom commands first
-    const customCommand = customCommands.find(cmd => cmd.name === interaction.commandName);
-    if (customCommand) {
+    db.get('SELECT commandResponse FROM custom_commands WHERE guildId = ? AND commandName = ?', [interaction.guild.id, interaction.commandName], async (err, row) => {
+        if (err) {
+            console.error('Error fetching custom command:', err);
+            return interaction.reply({ content: 'An error occurred while fetching the custom command!', ephemeral: true });
+        }
+
+        if (row) {
+            try {
+                await interaction.reply({ content: row.commandResponse });
+            } catch (error) {
+                console.error(`Error executing custom command '${interaction.commandName}':`, error);
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp({ content: 'An error occurred while executing the custom command!', ephemeral: true });
+                } else {
+                    await interaction.reply({ content: 'An error occurred while executing the custom command!', ephemeral: true });
+                }
+            }
+            return; // Stop further processing if it's a custom command
+        }
+
+        // Get the command from the client's commands collection
+        const command = client.commands.get(interaction.commandName);
+
+        if (!command) {
+            console.error(`No command matching ${interaction.commandName} was found.`);
+            return;
+        }
+
         try {
-            await interaction.reply({ content: customCommand.response }); // Reply with the custom command's response
+            await command.execute(interaction, config);
         } catch (error) {
-            console.error(`Error executing custom command '${interaction.commandName}':`, error);
+            console.error(error);
             if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: 'An error occurred while executing the custom command!', ephemeral: true });
+                await interaction.followUp({
+                    content: 'There was an error while executing this command!',
+                    ephemeral: true
+                });
             } else {
-                await interaction.reply({ content: 'An error occurred while executing the custom command!', ephemeral: true });
+                await interaction.reply({
+                    content: 'There was an error while executing this command!',
+                    ephemeral: true
+                });
             }
         }
-        return; // Stop further processing if it's a custom command
-    }
+    });
+    return; // Return here to prevent the rest of the original interactionCreate listener from running immediately
 
     // Get the command from the client's commands collection
     const command = client.commands.get(interaction.commandName);
@@ -441,25 +380,27 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
     }
 
     // Reaction roles functionality
-    const matchedReactionRole = reactionRoles.find(rr =>
-        rr.messageId === reaction.message.id &&
-        (rr.emoji === reaction.emoji.name || rr.emoji === reaction.emoji.id)
-    );
+    db.get('SELECT roleId FROM reaction_roles WHERE messageId = ? AND emoji = ?', [reaction.message.id, reaction.emoji.name], async (err, row) => {
+        if (err) {
+            console.error('Error fetching reaction role:', err);
+            return;
+        }
 
-    if (matchedReactionRole) {
-        const guild = reaction.message.guild;
-        const member = await guild.members.fetch(user.id); // Fetch the member
-        const role = guild.roles.cache.get(matchedReactionRole.roleId); // Get the role
+        if (row) {
+            const guild = reaction.message.guild;
+            const member = await guild.members.fetch(user.id);
+            const role = guild.roles.cache.get(row.roleId);
 
-        if (member && role) {
-            try {
-                await member.roles.add(role); // Add the role to the member
-                console.log(`Assigned role ${role.name} to ${member.user.tag} via reaction.`);
-            } catch (error) {
-                console.error(`Error assigning role ${role.name} to ${member.user.tag}:`, error);
+            if (member && role) {
+                try {
+                    await member.roles.add(role);
+                    console.log(`Assigned role ${role.name} to ${member.user.tag} via reaction.`);
+                } catch (error) {
+                    console.error(`Error assigning role ${role.name} to ${member.user.tag}:`, error);
+                }
             }
         }
-    }
+    });
 });
 
 // Event listener for when a reaction is removed from a message
@@ -477,25 +418,27 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
     }
 
     // Reaction roles functionality (remove role)
-    const matchedReactionRole = reactionRoles.find(rr =>
-        rr.messageId === reaction.message.id &&
-        (rr.emoji === reaction.emoji.name || rr.emoji === reaction.emoji.id)
-    );
+    db.get('SELECT roleId FROM reaction_roles WHERE messageId = ? AND emoji = ?', [reaction.message.id, reaction.emoji.name], async (err, row) => {
+        if (err) {
+            console.error('Error fetching reaction role:', err);
+            return;
+        }
 
-    if (matchedReactionRole) {
-        const guild = reaction.message.guild;
-        const member = await guild.members.fetch(user.id); // Fetch the member
-        const role = guild.roles.cache.get(matchedReactionRole.roleId); // Get the role
+        if (row) {
+            const guild = reaction.message.guild;
+            const member = await guild.members.fetch(user.id);
+            const role = guild.roles.cache.get(row.roleId);
 
-        if (member && role) {
-            try {
-                await member.roles.remove(role); // Remove the role from the member
-                console.log(`Removed role ${role.name} from ${member.user.tag} via reaction.`);
-            } catch (error) {
-                console.error(`Error removing role ${role.name} from ${member.user.tag}:`, error);
+            if (member && role) {
+                try {
+                    await member.roles.remove(role);
+                    console.log(`Removed role ${role.name} from ${member.user.tag} via reaction.`);
+                } catch (error) {
+                    console.error(`Error removing role ${role.name} from ${member.user.tag}:`, error);
+                }
             }
         }
-    }
+    });
 });
 
 // Event listener for voice state updates (e.g., user joins/leaves voice channel)
@@ -565,11 +508,26 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
 
             // Economy: Award currency for voice time
             if (config.economy && config.economy.enabled) {
-                if (!economy[userId]) {
-                    economy[userId] = { balance: 0, lastDaily: 0 };
-                }
                 const currencyToGive = Math.floor(timeSpent / 30000); // 1 currency per 30 seconds
-                economy[userId].balance += currencyToGive; // Add currency to user's balance
+                if (currencyToGive > 0) {
+                    db.get('SELECT balance FROM economy WHERE userId = ? AND guildId = ?', [userId, oldState.guild.id], (err, row) => {
+                        if (err) {
+                            console.error('Error fetching economy for voice XP:', err);
+                            return;
+                        }
+                        let currentBalance = row ? row.balance : 0;
+                        currentBalance += currencyToGive;
+                        if (row) {
+                            db.run('UPDATE economy SET balance = ? WHERE userId = ? AND guildId = ?', [currentBalance, userId, oldState.guild.id], (updateErr) => {
+                                if (updateErr) console.error('Error updating economy for voice XP:', updateErr);
+                            });
+                        } else {
+                            db.run('INSERT INTO economy (userId, guildId, balance) VALUES (?, ?, ?)', [userId, oldState.guild.id, currentBalance], (insertErr) => {
+                                if (insertErr) console.error('Error inserting economy for voice XP:', insertErr);
+                            });
+                        }
+                    });
+                }
             }
         }
     } else if (!oldState.channelId && newState.channelId) {
@@ -707,74 +665,104 @@ client.on(Events.MessageCreate, async message => {
     }
 
     const userId = message.author.id;
-    if (!levels[userId]) {
-        levels[userId] = { xp: 0, level: 0 };
-    }
+    const guildId = message.guild.id;
 
     // XP gain logic for messages
     const xpToGive = Math.floor(Math.random() * 10) + 15; // Random XP between 15 and 25
-    levels[userId].xp += xpToGive; // Add XP to user
 
-    // Level up logic
-    const nextLevelXp = 5 * (levels[userId].level ** 2) + 50 * levels[userId].level + 100; // Formula for XP needed for next level
-    if (levels[userId].xp >= nextLevelXp) {
-        levels[userId].level++; // Level up
-        levels[userId].xp = 0; // Reset XP for the new level
-        message.channel.send(`Congratulations ${message.author}! You've reached level ${levels[userId].level}!`); // Send level up message
-    }
+    db.get('SELECT xp, level FROM levels WHERE userId = ? AND guildId = ?', [userId, guildId], (err, row) => {
+        if (err) {
+            console.error('Error fetching user level:', err);
+            return;
+        }
+
+        let currentXp = row ? row.xp : 0;
+        let currentLevel = row ? row.level : 0;
+
+        currentXp += xpToGive;
+
+        const nextLevelXp = 5 * (currentLevel ** 2) + 50 * currentLevel + 100;
+
+        if (currentXp >= nextLevelXp) {
+            currentLevel++;
+            currentXp = 0;
+            message.channel.send(`Congratulations ${message.author}! You've reached level ${currentLevel}!`);
+        }
+
+        if (row) {
+            db.run('UPDATE levels SET xp = ?, level = ? WHERE userId = ? AND guildId = ?', [currentXp, currentLevel, userId, guildId], (updateErr) => {
+                if (updateErr) console.error('Error updating user level:', updateErr);
+            });
+        } else {
+            db.run('INSERT INTO levels (userId, guildId, xp, level) VALUES (?, ?, ?, ?)', [userId, guildId, currentXp, currentLevel], (insertErr) => {
+                if (insertErr) console.error('Error inserting user level:', insertErr);
+            });
+        }
+    });
 
     // Economy: Award currency for messages
     if (config.economy && config.economy.enabled) {
-        if (!economy[userId]) {
-            economy[userId] = { balance: 0, lastDaily: 0 };
-        }
         const currencyToGive = Math.floor(Math.random() * 5) + 1; // 1-5 currency per message
-        economy[userId].balance += currencyToGive; // Add currency to user's balance
+        db.get('SELECT balance FROM economy WHERE userId = ? AND guildId = ?', [userId, guildId], (err, row) => {
+            if (err) {
+                console.error('Error fetching economy for message XP:', err);
+                return;
+            }
+            let currentBalance = row ? row.balance : 0;
+            currentBalance += currencyToGive;
+            if (row) {
+                db.run('UPDATE economy SET balance = ? WHERE userId = ? AND guildId = ?', [currentBalance, userId, guildId], (updateErr) => {
+                    if (updateErr) console.error('Error updating economy for message XP:', updateErr);
+                });
+            } else {
+                db.run('INSERT INTO economy (userId, guildId, balance) VALUES (?, ?, ?)', [userId, guildId, currentBalance], (insertErr) => {
+                    if (insertErr) console.error('Error inserting economy for message XP:', insertErr);
+                });
+            }
+        });
     }
 
     // Bad word filter logic
-    // Re-read the badwords list on every message to ensure it's up-to-date
-    let currentBadwords = [];
-    try {
-        const badwordsPath = path.join(__dirname, 'badwords.json');
-        const data = fs.readFileSync(badwordsPath, 'utf8');
-        currentBadwords = JSON.parse(data);
-    } catch (readError) {
-        console.error('Could not read badwords.json during message processing:', readError);
-    }
+    db.all('SELECT word FROM badwords WHERE guildId = ?', [message.guild.id], async (err, rows) => {
+        if (err) {
+            console.error('Error fetching bad words:', err);
+            return;
+        }
+        const currentBadwords = rows.map(row => row.word);
 
-    const messageContent = message.content.toLowerCase();
-    for (const word of currentBadwords) {
-        if (messageContent.includes(word)) { // Check if message contains a bad word
-            try {
-                await message.delete(); // Delete the message
-                await message.channel.send(`Please do not use forbidden words, ${message.author}.`).then(msg => {
-                    setTimeout(() => msg.delete().catch(console.error), 5000); // Delete warning after 5 seconds
-                });
+        const messageContent = message.content.toLowerCase();
+        for (const word of currentBadwords) {
+            if (messageContent.includes(word)) { // Check if message contains a bad word
+                try {
+                    await message.delete(); // Delete the message
+                    await message.channel.send(`Please do not use forbidden words, ${message.author}.`).then(msg => {
+                        setTimeout(() => msg.delete().catch(console.error), 5000); // Delete warning after 5 seconds
+                    });
 
-                // Send log to moderation channel if configured
-                if (config.MOD_LOG_CHANNEL_ID) {
-                    const logChannel = message.guild.channels.cache.get(config.MOD_LOG_CHANNEL_ID);
-                    if (logChannel) {
-                        const logEmbed = new EmbedBuilder()
-                            .setColor('#FF0000')
-                            .setTitle('Forbidden Word Detected')
-                            .setDescription(`User ${message.author.tag} sent a message containing a forbidden word.`)
-                            .addFields(
-                                { name: 'User', value: message.author.tag, inline: true },
-                                { name: 'Channel', value: message.channel.name, inline: true },
-                                { name: 'Message', value: message.content }
-                            )
-                            .setTimestamp();
-                        logChannel.send({ embeds: [logEmbed] }).catch(console.error);
+                    // Send log to moderation channel if configured
+                    if (config.MOD_LOG_CHANNEL_ID) {
+                        const logChannel = message.guild.channels.cache.get(config.MOD_LOG_CHANNEL_ID);
+                        if (logChannel) {
+                            const logEmbed = new EmbedBuilder()
+                                .setColor('#FF0000')
+                                .setTitle('Forbidden Word Detected')
+                                .setDescription(`User ${message.author.tag} sent a message containing a forbidden word.`)
+                                .addFields(
+                                    { name: 'User', value: message.author.tag, inline: true },
+                                    { name: 'Channel', value: message.channel.name, inline: true },
+                                    { name: 'Message', value: message.content }
+                                )
+                                .setTimestamp();
+                            logChannel.send({ embeds: [logEmbed] }).catch(console.error);
+                        }
                     }
+                    break; // Stop checking after the first bad word is found
+                } catch (error) {
+                    console.error('Error deleting message or sending warning:', error);
                 }
-                break; // Stop checking after the first bad word is found
-            } catch (error) {
-                console.error('Error deleting message or sending warning:', error);
             }
         }
-    }
+    });
 });
 
 // Log in to Discord with the bot token
