@@ -23,7 +23,7 @@ module.exports = {
         // Permission Check 2: Bot must have ManageMessages permission
         if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
             return interaction.reply({
-                content: "😥 我没有足够的权限来删除消息。(I don't have enough permissions to delete messages.)",
+                content: "😥 I don't have enough permissions to delete messages.",
                 ephemeral: true
             });
         }
@@ -37,7 +37,7 @@ module.exports = {
 
             if (fetchedMessages.size === 0) {
                 return interaction.reply({
-                    content: '没有找到可以删除的消息。(No messages found to delete.)',
+                    content: 'No messages found to delete.',
                     ephemeral: true
                 });
             }
@@ -47,7 +47,7 @@ module.exports = {
 
             if (deletedMessages.size === 0) {
                 const replyMsg = await interaction.reply({
-                    content: '所有符合条件的消息都超过14天了，无法批量删除。或者没有消息可以删除。(All eligible messages were older than 14 days and could not be bulk deleted, or no messages were deletable.)',
+                    content: 'All eligible messages were older than 14 days and could not be bulk deleted, or no messages were deletable.',
                     ephemeral: true
                 });
                 return;
@@ -55,9 +55,8 @@ module.exports = {
 
             const successEmbed = new EmbedBuilder()
                 .setColor(0x00FF00) // Green color
-                .setTitle('✅ 消息清除成功 (Messages Purged Successfully)')
-                .setDescription(`成功删除了 **${deletedMessages.size}** 条消息.\n(Successfully deleted **${deletedMessages.size}** messages.)`)
-                .setFooter({ text: `由 ${interaction.user.tag} 请求 (Requested by ${interaction.user.tag})` })
+                .setTitle('✅ Messages Purged Successfully')
+                .setDescription(`Successfully deleted **${deletedMessages.size}** messages.`)
                 .setTimestamp();
 
             await interaction.reply({ embeds: [successEmbed], ephemeral: true });

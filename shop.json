@@ -1,1 +1,11 @@
-[]
+[
+    {
+        "id": 1,
+        "name": "Crypto Mining Rig",
+        "price": 5000,
+        "description": "Generates passive income over time.",
+        "type": "passive_income",
+        "incomePerInterval": 500,
+        "interval": 3600000
+    }
+]

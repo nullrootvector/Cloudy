@@ -28,7 +28,7 @@ module.exports = {
         // Permission Check 1: Check if the command issuer has the 'ModerateMembers' permission
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
             return interaction.reply({
-                content: "🚫 抱歉，亲爱的，你没有禁言成员的权限。(Sorry, my dear, you don't have permission to mute members.)",
+                content: "🚫 Sorry, you don't have permission to mute members.",
                 ephemeral: true
             });
         }
@@ -36,7 +36,7 @@ module.exports = {
         // Permission Check 2: Check if the bot itself has the 'ModerateMembers' permission
         if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
             return interaction.reply({
-                content: "😥 我没有足够的权限来禁言成员。(I don't have enough permissions to mute members.)",
+                content: "😥 I don't have enough permissions to mute members.",
                 ephemeral: true
             });
         }
@@ -44,7 +44,7 @@ module.exports = {
         // Hierarchy Check: Check if the bot can mute the target member (based on role hierarchy)
         if (!memberToMute.moderatable) {
             return interaction.reply({
-                content: "我无法禁言此用户。他们可能有更高的角色，或者我没有足够的权限。(I cannot mute this user. They might have a higher role, or I don't have permission.)",
+                content: "I cannot mute this user. They might have a higher role, or I don't have permission.",
                 ephemeral: true
             });
         }
@@ -52,7 +52,7 @@ module.exports = {
         // Self-Mute Check: Prevent a user from muting themselves
         if (memberToMute.id === interaction.user.id) {
             return interaction.reply({
-                content: "你不能禁言自己，我的朋友！(You can't mute yourself, my friend!)",
+                content: "You can't mute yourself, my friend!",
                 ephemeral: true
             });
         }
@@ -72,16 +72,16 @@ module.exports = {
                 .setTitle('🔇 Member Muted') // Title of the embed
                 .setDescription(`${memberToMute.user.tag} has been muted.`) // Description of the action
                 .addFields(
-                    { name: 'Muted User (被禁言用户)', value: `${memberToMute.user.tag} (${memberToMute.id})`, inline: true }, // Field for the muted user
-                    { name: 'Moderator (管理员)', value: interaction.user.tag, inline: true }, // Field for the moderator who issued the mute
-                    { name: 'Reason (理由)', value: reason } // Field for the mute reason
+                    { name: 'Muted User', value: `${memberToMute.user.tag} (${memberToMute.id})`, inline: true }, // Field for the muted user
+                    { name: 'Moderator', value: interaction.user.tag, inline: true }, // Field for the moderator who issued the mute
+                    { name: 'Reason', value: reason } // Field for the mute reason
                 )
                 .setTimestamp() // Add a timestamp to the embed
                 .setFooter({ text: `Server: ${interaction.guild.name}` }); // Footer with server name
             
             // Add duration field to the embed if a duration was specified
             if (duration) {
-                muteEmbed.addFields({ name: 'Duration (时长)', value: `${duration} minutes`, inline: true });
+                muteEmbed.addFields({ name: 'Duration', value: `${duration} minutes`, inline: true });
             }
 
             // Reply to the interaction with the mute embed
@@ -97,18 +97,18 @@ module.exports = {
                     // Create an embed for the moderation log
                     const logEmbed = new EmbedBuilder()
                         .setColor('#FFA500') // Orange color
-                        .setTitle('🔇 Member Muted (日志)') // Title of the log embed
+                        .setTitle('🔇 Member Muted (Log)') // Title of the log embed
                         .setDescription(`${memberToMute.user.tag} has been muted.`) // Description of the action
                         .addFields(
-                            { name: 'Muted User (被禁言用户)', value: `${memberToMute.user.tag} (${memberToMute.id})`, inline: true },
-                            { name: 'Moderator (管理员)', value: interaction.user.tag, inline: true },
-                            { name: 'Reason (理由)', value: reason }
+                            { name: 'Muted User', value: `${memberToMute.user.tag} (${memberToMute.id})`, inline: true },
+                            { name: 'Moderator', value: interaction.user.tag, inline: true },
+                            { name: 'Reason', value: reason }
                         )
                         .setTimestamp() // Add a timestamp
                         .setFooter({ text: `User ID: ${memberToMute.id}` }); // Footer with user ID
                     // Add duration field to the log embed if a duration was specified
                     if (duration) {
-                        logEmbed.addFields({ name: 'Duration (时长)', value: `${duration} minutes`, inline: true });
+                        logEmbed.addFields({ name: 'Duration', value: `${duration} minutes`, inline: true });
                     }
                     // Send the log embed to the moderation channel
                     logChannel.send({ embeds: [logEmbed] }).catch(console.error); // Catch any errors during sending
@@ -117,7 +117,7 @@ module.exports = {
 
             // Optionally, try to DM the muted user about their mute
             try {
-                await memberToMute.send(`你已被禁言于服务器 **${interaction.guild.name}**.\n理由：${reason}${duration ? `\n时长：${duration}分钟` : ''}`);
+                await memberToMute.send(`You have been muted in **${interaction.guild.name}**. Reason: ${reason}${duration ? ` Duration: ${duration} minutes` : ''}`);
             } catch (dmError) {
                 // Log a warning if the DM could not be sent (e.g., user has DMs disabled)
                 console.warn(`Could not DM ${memberToMute.user.tag} about their mute: ${dmError}`);
@@ -128,9 +128,9 @@ module.exports = {
             console.error(`Error muting member ${memberToMute.user.tag}:`, error);
             // Reply to the interaction with an error message
             if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: "执行禁言操作时发生错误。(An error occurred while trying to mute the member.)", ephemeral: true });
+                await interaction.followUp({ content: "An error occurred while trying to mute the member.", ephemeral: true });
             } else {
-                await interaction.reply({ content: "执行禁言操作时发生错误。(An error occurred while trying to mute the member.)", ephemeral: true });
+                await interaction.reply({ content: "An error occurred while trying to mute the member.", ephemeral: true });
             }
         }
     },

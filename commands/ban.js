@@ -59,10 +59,10 @@ module.exports = {
                 .setTitle('🚫 Member Banned') // Title of the embed
                 .setDescription(`${memberToBan.user.tag} has been banned from the server.`) // Description of the action
                 .addFields(
-                    { name: 'Banned User (被封禁用户)', value: `${memberToBan.user.tag} (${memberToBan.id})`, inline: true }, // Field for the banned user
-                    { name: 'Moderator (管理员)', value: interaction.user.tag, inline: true }, // Field for the moderator who issued the ban
-                    { name: 'Messages Deleted (消息删除天数)', value: `${daysToDelete} days`, inline: true}, // Field for message deletion days
-                    { name: 'Reason (理由)', value: reason } // Field for the ban reason
+                    { name: 'Banned User', value: `${memberToBan.user.tag} (${memberToBan.id})`, inline: true }, // Field for the banned user
+                    { name: 'Moderator', value: interaction.user.tag, inline: true }, // Field for the moderator who issued the ban
+                    { name: 'Messages Deleted', value: `${daysToDelete} days`, inline: true}, // Field for message deletion days
+                    { name: 'Reason', value: reason } // Field for the ban reason
                 )
                 .setTimestamp() // Add a timestamp to the embed
                 .setFooter({ text: `Server: ${interaction.guild.name}` }); // Footer with server name

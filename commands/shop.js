@@ -84,12 +84,32 @@ module.exports = {
                                 return i.update({ content: 'An error occurred while processing your purchase.', components: [] });
                             }
 
-                            const purchaseEmbed = new EmbedBuilder()
-                                .setColor('#00FF00')
-                                .setTitle('Purchase Successful!')
-                                .setDescription(`You have purchased **${selectedItem.name}** for ${selectedItem.price} ${config.economy.currencyName}. Your new balance is ${newBalance} ${config.economy.currencyName}.`);
+                            db.get('SELECT quantity FROM user_inventory WHERE userId = ? AND guildId = ? AND itemId = ?', [userId, guildId, selectedItemId], (invErr, invRow) => {
+                                if (invErr) {
+                                    console.error('Error checking inventory:', invErr);
+                                    return i.update({ content: 'An error occurred while adding the item to your inventory.', components: [] });
+                                }
 
-                            i.update({ embeds: [purchaseEmbed], components: [] });
+                                if (invRow) {
+                                    // Item exists, update quantity
+                                    db.run('UPDATE user_inventory SET quantity = ? WHERE userId = ? AND guildId = ? AND itemId = ?', [invRow.quantity + 1, userId, guildId, selectedItemId], (updateInvErr) => {
+                                        if (updateInvErr) {
+                                            console.error('Error updating inventory:', updateInvErr);
+                                            return i.update({ content: 'An error occurred while updating your inventory.', components: [] });
+                                        }
+                                        sendPurchaseSuccess(i, selectedItem, newBalance, config);
+                                    });
+                                } else {
+                                    // Item does not exist, insert new entry
+                                    db.run('INSERT INTO user_inventory (userId, guildId, itemId, quantity) VALUES (?, ?, ?, ?)', [userId, guildId, selectedItemId, 1], (insertInvErr) => {
+                                        if (insertInvErr) {
+                                            console.error('Error inserting into inventory:', insertInvErr);
+                                            return i.update({ content: 'An error occurred while adding the item to your inventory.', components: [] });
+                                        }
+                                        sendPurchaseSuccess(i, selectedItem, newBalance, config);
+                                    });
+                                }
+                            });
                         });
                     });
                 }
@@ -103,3 +123,12 @@ module.exports = {
         });
     },
 };
+
+function sendPurchaseSuccess(interaction, item, newBalance, config) {
+    const purchaseEmbed = new EmbedBuilder()
+        .setColor('#00FF00')
+        .setTitle('Purchase Successful!')
+        .setDescription(`You have purchased **${item.name}** for ${item.price} ${config.economy.currencyName}. It has been added to your inventory. Your new balance is ${newBalance} ${config.economy.currencyName}.`);
+
+    interaction.update({ embeds: [purchaseEmbed], components: [] });
+}

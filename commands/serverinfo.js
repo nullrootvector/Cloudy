@@ -25,11 +25,11 @@ module.exports = {
         
         // For verification level, Discord provides numbers. Let's make them human-readable.
         const verificationLevels = {
-            0: 'None (无 - Wú)',
-            1: 'Low (低 - Dī) - Must have a verified email',
-            2: 'Medium (中 - Zhōng) - Must be registered on Discord for >5 mins',
-            3: 'High (高 - Gāo) - (╯°□°）╯︵ ┻━┻ - Must be a member of the server for >10 mins',
-            4: 'Highest (最高 - Zuìgāo) - ┻━┻ ﾐヽ(ಠ益ಠ)ノ彡┻━┻ - Must have a verified phone'
+            0: 'None',
+            1: 'Low - Must have a verified email',
+            2: 'Medium - Must be registered on Discord for >5 mins',
+            3: 'High - (╯°□°）╯︵ ┻━┻ - Must be a member of the server for >10 mins',
+            4: 'Highest - ┻━┻ ﾐヽ(ಠ益ಠ)ノ彡┻━┻ - Must have a verified phone'
         };
         const verificationLevelString = verificationLevels[guild.verificationLevel] || 'Unknown';
 
@@ -47,18 +47,18 @@ module.exports = {
             .setTitle(`✨ Server Information: ${guild.name} ✨`)
             .setThumbnail(guild.iconURL({ dynamic: true, size: 512 })) // Dynamic for animated icons, size for quality
             .addFields(
-                { name: '👑 Server Owner (服主 - Fúzhǔ)', value: ownerTag, inline: true },
-                { name: '🆔 Server ID (服务器ID)', value: guild.id, inline: true },
-                { name: '📅 Created On (创建日期)', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:F>`, inline: true }, // Using Discord's timestamp formatting
+                { name: '👑 Server Owner', value: ownerTag, inline: true },
+                { name: '🆔 Server ID', value: guild.id, inline: true },
+                { name: '📅 Created On', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:F>`, inline: true }, // Using Discord's timestamp formatting
                 
-                { name: '👥 Members (成员)', value: `Total: ${guild.memberCount}`, inline: true },
+                { name: '👥 Members', value: `Total: ${guild.memberCount}`, inline: true },
 
-                { name: '📜 Roles (角色数量)', value: `${guild.roles.cache.size}`, inline: true },
-                { name: '💬 Channels (频道数量)', value: `${guild.channels.cache.size}`, inline: true }, // This includes all channel types
+                { name: '📜 Roles', value: `${guild.roles.cache.size}`, inline: true },
+                { name: '💬 Channels', value: `${guild.channels.cache.size}`, inline: true }, // This includes all channel types
 
-                { name: '🛡️ Verification Level (验证级别)', value: verificationLevelString, inline: true },
-                { name: '🚀 Boost Tier (加速等级)', value: premiumTierString, inline: true },
-                { name: '💎 Boost Count (加速数量)', value: `${guild.premiumSubscriptionCount || 0}`, inline: true }
+                { name: '🛡️ Verification Level', value: verificationLevelString, inline: true },
+                { name: '🚀 Boost Tier', value: premiumTierString, inline: true },
+                { name: '💎 Boost Count', value: `${guild.premiumSubscriptionCount || 0}`, inline: true }
             )
             .setTimestamp()
             .setFooter({ text: `Requested by ${interaction.user.tag} | Information from ${guild.name}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) });

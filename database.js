@@ -36,19 +36,11 @@ db.serialize(() => {
         userId TEXT NOT NULL,
         guildId TEXT NOT NULL,
         balance INTEGER NOT NULL DEFAULT 0,
-        lastDaily INTEGER
-    )`, (err) => {
-        if (err) {
-            console.error(err.message);
-        }
-    });
-
-    db.run(`CREATE TABLE IF NOT EXISTS levels (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        userId TEXT NOT NULL,
-        guildId TEXT NOT NULL,
-        xp INTEGER NOT NULL DEFAULT 0,
-        level INTEGER NOT NULL DEFAULT 0
+        lastDaily INTEGER,
+        lastWork INTEGER,
+        lastCrime INTEGER,
+        lastPassiveIncome INTEGER,
+        lastRob INTEGER
     )`, (err) => {
         if (err) {
             console.error(err.message);
@@ -126,6 +118,34 @@ db.serialize(() => {
         winnerCount INTEGER NOT NULL,
         hostId TEXT NOT NULL,
         ended BOOLEAN NOT NULL DEFAULT 0
+    )`, (err) => {
+        if (err) {
+            console.error(err.message);
+        }
+    });
+
+    db.run(`CREATE TABLE IF NOT EXISTS user_inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId TEXT NOT NULL,
+        guildId TEXT NOT NULL,
+        itemId INTEGER NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY (itemId) REFERENCES shop_items(id)
+    )`, (err) => {
+        if (err) {
+            console.error(err.message);
+        }
+    });
+
+    db.run(`CREATE TABLE IF NOT EXISTS marketplace_listings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sellerId TEXT NOT NULL,
+        guildId TEXT NOT NULL,
+        itemId INTEGER NOT NULL,
+        quantity INTEGER NOT NULL,
+        price INTEGER NOT NULL,
+        timestamp INTEGER NOT NULL,
+        FOREIGN KEY (itemId) REFERENCES shop_items(id)
     )`, (err) => {
         if (err) {
             console.error(err.message);

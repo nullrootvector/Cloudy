@@ -17,7 +17,7 @@ module.exports = {
 
             if (rows.length === 0) {
                 return interaction.reply({
-                    content: 'The leaderboard is empty. Go send messages to gain XP!',
+                    content: 'The leaderboard is empty. Send messages or join voice channels to earn currency!',
                     ephemeral: true
                 });
             }

@@ -22,22 +22,22 @@ module.exports = {
 
         // Permission Check: Check if the command issuer has the 'KickMembers' permission
         if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers)) {
-            return interaction.reply({ content: "🚫 你没有权限使用此命令，亲爱的。(You don't have permission to use this command, dear.)", ephemeral: true });
+            return interaction.reply({ content: "🚫 You don't have permission to use this command.", ephemeral: true });
         }
 
         // Permission Check: Check if the bot itself has the 'KickMembers' permission
         if (!interaction.guild.members.me.permissions.has(PermissionsBitField.Flags.KickMembers)) {
-            return interaction.reply({ content: "😥 我没有足够的权限来执行此操作。(I don't have enough permissions to perform this action.)", ephemeral: true });
+            return interaction.reply({ content: "😥 I don't have enough permissions to perform this action.", ephemeral: true });
         }
 
         // Hierarchy Check: Check if the bot can kick the target member (based on role hierarchy)
         if (!memberToKick.kickable) {
-            return interaction.reply({ content: "我无法踢出此用户。他们可能有更高的角色，或者我没有足够的权限。(I cannot kick this user. They might have a higher role, or I don't have permission.)", ephemeral: true });
+            return interaction.reply({ content: "I cannot kick this user. They might have a higher role, or I don't have permission.", ephemeral: true });
         }
         
         // Self-Kick Check: Prevent a user from kicking themselves
         if (memberToKick.id === interaction.user.id) {
-            return interaction.reply({ content: "你不能踢自己啦，小傻瓜！(You can't kick yourself, silly!)", ephemeral: true });
+            return interaction.reply({ content: "You can't kick yourself, silly!", ephemeral: true });
         }
 
         try {
@@ -50,9 +50,9 @@ module.exports = {
                 .setTitle('👢 Member Kicked') // Title of the embed
                 .setDescription(`${memberToKick.user.tag} has been kicked from the server.`) // Description of the action
                 .addFields(
-                    { name: 'Kicked User (被踢用户)', value: `${memberToKick.user.tag} (${memberToKick.id})`, inline: true }, // Field for the kicked user
-                    { name: 'Moderator (管理员)', value: interaction.user.tag, inline: true }, // Field for the moderator who issued the kick
-                    { name: 'Reason (理由)', value: reason } // Field for the kick reason
+                    { name: 'Kicked User', value: `${memberToKick.user.tag} (${memberToKick.id})`, inline: true }, // Field for the kicked user
+                    { name: 'Moderator', value: interaction.user.tag, inline: true }, // Field for the moderator who issued the kick
+                    { name: 'Reason', value: reason } // Field for the kick reason
                 )
                 .setTimestamp() // Add a timestamp to the embed
                 .setFooter({ text: `Server: ${interaction.guild.name}` }); // Footer with server name
@@ -70,12 +70,12 @@ module.exports = {
                     // Create an embed for the moderation log
                     const logEmbed = new EmbedBuilder()
                         .setColor('#ffcc00') // Yellowish color
-                        .setTitle('👢 Member Kicked (日志)') // Title of the log embed
+                        .setTitle('👢 Member Kicked (Log)') // Title of the log embed
                         .setDescription(`${memberToKick.user.tag} has been kicked.`) // Description of the action
                         .addFields(
-                            { name: 'Kicked User (被踢用户)', value: `${memberToKick.user.tag} (${memberToKick.id})`, inline: true },
-                            { name: 'Moderator (管理员)', value: interaction.user.tag, inline: true },
-                            { name: 'Reason (理由)', value: reason }
+                            { name: 'Kicked User', value: `${memberToKick.user.tag} (${memberToKick.id})`, inline: true },
+                            { name: 'Moderator', value: interaction.user.tag, inline: true },
+                            { name: 'Reason', value: reason }
                         )
                         .setTimestamp() // Add a timestamp
                         .setFooter({ text: `User ID: ${memberToKick.id}` }); // Footer with user ID
@@ -86,7 +86,7 @@ module.exports = {
 
             // Optionally, try to DM the kicked user about their kick
             try {
-                await memberToKick.send(`你已被踢出服务器 **${interaction.guild.name}**.\n理由：${reason}`);
+                await memberToKick.send(`You have been kicked from **${interaction.guild.name}**. Reason: ${reason}`);
             } catch (dmError) {
                 // Log a warning if the DM could not be sent (e.g., user has DMs disabled)
                 console.warn(`Could not DM ${memberToKick.user.tag} about their kick: ${dmError}`);
@@ -97,9 +97,9 @@ module.exports = {
             console.error(`Error kicking member ${memberToKick.user.tag}:`, error);
             // Reply to the interaction with an error message
             if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: "执行踢出操作时发生错误。(An error occurred while trying to kick the member.)", ephemeral: true });
+                await interaction.followUp({ content: "An error occurred while trying to kick the member.", ephemeral: true });
             } else {
-                await interaction.reply({ content: "执行踢出操作时发生错误。(An error occurred while trying to kick the member.)", ephemeral: true });
+                await interaction.reply({ content: "An error occurred while trying to kick the member.", ephemeral: true });
             }
         }
     }

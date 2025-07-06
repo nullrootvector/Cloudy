@@ -113,15 +113,15 @@ module.exports = {
             // Send the embed to the target channel
             await targetChannel.send({ embeds: [embed] });
             // Confirm to the user that the embed was sent
-            await interaction.reply({ content: `嵌入消息已发送到 ${targetChannel}。(Embed message sent to ${targetChannel}.)`, ephemeral: true });
+            await interaction.reply({ content: `Embed message sent to ${targetChannel}.`, ephemeral: true });
         } catch (error) {
             // Catch any errors that occur during sending the embed
             console.error('Error creating custom embed:', error);
             // Reply to the interaction with an error message
             if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: '创建自定义嵌入消息时发生错误。(An error occurred while creating the custom embed message.)', ephemeral: true });
+                await interaction.followUp({ content: 'An error occurred while creating the custom embed message.', ephemeral: true });
             } else {
-                await interaction.reply({ content: '创建自定义嵌入消息时发生错误。(An error occurred while creating the custom embed message.)', ephemeral: true });
+                await interaction.reply({ content: 'An error occurred while creating the custom embed message.', ephemeral: true });
             }
         }
     },

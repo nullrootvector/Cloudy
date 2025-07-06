@@ -216,15 +216,6 @@ client.once(Events.ClientReady, readyClient => {
         });
     }, 30 * 1000); // Check every 30 seconds
 
-    // Save levels data every 30 seconds (this will be removed or modified later)
-    // This is a placeholder for now, as levels are handled per message.
-    // The levels data is updated on message create and voice state update, so a separate interval save is not strictly necessary
-    // if we update the database directly in those event handlers.
-    // For now, I'll keep it as is, but it will be removed in the next step.
-    setInterval(() => {
-        // This block will be removed in the next step as levels are now handled by the database directly.
-    }, 30 * 1000);
-
     // Event listener for when a new member joins the guild
     client.on(Events.GuildMemberAdd, async member => {
         if (config.WELCOME_CHANNEL_ID) {
@@ -244,8 +235,58 @@ client.once(Events.ClientReady, readyClient => {
             }
         }
     });
-});
 
+    // Passive Income Distribution (every 10 minutes)
+    setInterval(async () => {
+        const now = Date.now();
+        const shopItems = require('./shop.json');
+        const passiveIncomeItems = shopItems.filter(item => item.type === 'passive_income');
+
+        if (passiveIncomeItems.length === 0) return; // No passive income items configured
+
+        db.all('SELECT userId, guildId, balance, lastPassiveIncome FROM economy', async (err, economyRows) => {
+            if (err) {
+                console.error('Error fetching economy data for passive income:', err);
+                return;
+            }
+
+            for (const economyRow of economyRows) {
+                const userId = economyRow.userId;
+                const guildId = economyRow.guildId;
+                const lastPassiveIncome = economyRow.lastPassiveIncome || 0;
+
+                db.all('SELECT itemId, quantity FROM user_inventory WHERE userId = ? AND guildId = ?', [userId, guildId], async (err, inventoryRows) => {
+                    if (err) {
+                        console.error(`Error fetching inventory for user ${userId}:`, err);
+                        return;
+                    }
+
+                    let totalPassiveIncome = 0;
+                    for (const inventoryItem of inventoryRows) {
+                        const itemDetails = passiveIncomeItems.find(item => item.id === inventoryItem.itemId);
+                        if (itemDetails) {
+                            const timeSinceLastIncome = now - lastPassiveIncome;
+                            const intervalsPassed = Math.floor(timeSinceLastIncome / itemDetails.interval);
+                            if (intervalsPassed > 0) {
+                                totalPassiveIncome += itemDetails.incomePerInterval * intervalsPassed * inventoryItem.quantity;
+                            }
+                        }
+                    }
+
+                    if (totalPassiveIncome > 0) {
+                        const newBalance = economyRow.balance + totalPassiveIncome;
+                        db.run('UPDATE economy SET balance = ?, lastPassiveIncome = ? WHERE userId = ? AND guildId = ?', [newBalance, now, userId, guildId], (updateErr) => {
+                            if (updateErr) {
+                                console.error(`Error updating balance for passive income for user ${userId}:`, updateErr);
+                            }
+                        });
+                    }
+                });
+            }
+        });
+    }, 10 * 60 * 1000);
+
+});
 
 // Load custom commands from customcommands.json on startup
 // Load levels data from levels.json on startup
@@ -285,7 +326,7 @@ client.on(Events.InteractionCreate, async interaction => {
         }
 
         try {
-            await command.execute(interaction, config);
+            await command.execute(interaction, config, client); // Pass client to command
         } catch (error) {
             console.error(error);
             if (interaction.replied || interaction.deferred) {
@@ -479,32 +520,13 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
         }
     }
 
-    // Voice XP and Economy
+    // Voice Economy
     if (oldState.channelId && !newState.channelId) {
         // User left a voice channel
         const joinTime = voiceTime.get(user.id);
         if (joinTime) {
             const userId = user.id;
             const timeSpent = Date.now() - joinTime; // Calculate time spent in voice channel
-            const xpToGive = Math.floor(timeSpent / 60000); // 1 XP per minute
-            
-            if (xpToGive > 0) {
-                if (!levels[userId]) {
-                    levels[userId] = { xp: 0, level: 0 };
-                }
-                levels[userId].xp += xpToGive; // Add XP
-                const nextLevelXp = 5 * (levels[userId].level ** 2) + 50 * levels[userId].level + 100; // Calculate XP needed for next level
-                if (levels[userId].xp >= nextLevelXp) {
-                    levels[userId].level++; // Level up
-                    levels[userId].xp = 0; // Reset XP for new level
-                    const channel = oldState.guild.channels.cache.get(config.WELCOME_CHANNEL_ID); // Get welcome channel for level up message
-                    if (channel) {
-                        channel.send(`Congratulations ${user}! You've reached level ${levels[userId].level}!`); // Send level up message
-                    }
-                }
-            }
-
-            voiceTime.delete(user.id); // Remove user from voiceTime map
 
             // Economy: Award currency for voice time
             if (config.economy && config.economy.enabled) {
@@ -512,23 +534,24 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
                 if (currencyToGive > 0) {
                     db.get('SELECT balance FROM economy WHERE userId = ? AND guildId = ?', [userId, oldState.guild.id], (err, row) => {
                         if (err) {
-                            console.error('Error fetching economy for voice XP:', err);
+                            console.error('Error fetching economy for voice time:', err);
                             return;
                         }
                         let currentBalance = row ? row.balance : 0;
                         currentBalance += currencyToGive;
                         if (row) {
                             db.run('UPDATE economy SET balance = ? WHERE userId = ? AND guildId = ?', [currentBalance, userId, oldState.guild.id], (updateErr) => {
-                                if (updateErr) console.error('Error updating economy for voice XP:', updateErr);
+                                if (updateErr) console.error('Error updating economy for voice time:', updateErr);
                             });
                         } else {
                             db.run('INSERT INTO economy (userId, guildId, balance) VALUES (?, ?, ?)', [userId, oldState.guild.id, currentBalance], (insertErr) => {
-                                if (insertErr) console.error('Error inserting economy for voice XP:', insertErr);
+                                if (insertErr) console.error('Error inserting economy for voice time:', insertErr);
                             });
                         }
                     });
                 }
             }
+            voiceTime.delete(user.id); // Remove user from voiceTime map
         }
     } else if (!oldState.channelId && newState.channelId) {
         // User joined a voice channel
@@ -667,56 +690,23 @@ client.on(Events.MessageCreate, async message => {
     const userId = message.author.id;
     const guildId = message.guild.id;
 
-    // XP gain logic for messages
-    const xpToGive = Math.floor(Math.random() * 10) + 15; // Random XP between 15 and 25
-
-    db.get('SELECT xp, level FROM levels WHERE userId = ? AND guildId = ?', [userId, guildId], (err, row) => {
-        if (err) {
-            console.error('Error fetching user level:', err);
-            return;
-        }
-
-        let currentXp = row ? row.xp : 0;
-        let currentLevel = row ? row.level : 0;
-
-        currentXp += xpToGive;
-
-        const nextLevelXp = 5 * (currentLevel ** 2) + 50 * currentLevel + 100;
-
-        if (currentXp >= nextLevelXp) {
-            currentLevel++;
-            currentXp = 0;
-            message.channel.send(`Congratulations ${message.author}! You've reached level ${currentLevel}!`);
-        }
-
-        if (row) {
-            db.run('UPDATE levels SET xp = ?, level = ? WHERE userId = ? AND guildId = ?', [currentXp, currentLevel, userId, guildId], (updateErr) => {
-                if (updateErr) console.error('Error updating user level:', updateErr);
-            });
-        } else {
-            db.run('INSERT INTO levels (userId, guildId, xp, level) VALUES (?, ?, ?, ?)', [userId, guildId, currentXp, currentLevel], (insertErr) => {
-                if (insertErr) console.error('Error inserting user level:', insertErr);
-            });
-        }
-    });
-
     // Economy: Award currency for messages
     if (config.economy && config.economy.enabled) {
         const currencyToGive = Math.floor(Math.random() * 5) + 1; // 1-5 currency per message
         db.get('SELECT balance FROM economy WHERE userId = ? AND guildId = ?', [userId, guildId], (err, row) => {
             if (err) {
-                console.error('Error fetching economy for message XP:', err);
+                console.error('Error fetching economy for message:', err);
                 return;
             }
             let currentBalance = row ? row.balance : 0;
             currentBalance += currencyToGive;
             if (row) {
                 db.run('UPDATE economy SET balance = ? WHERE userId = ? AND guildId = ?', [currentBalance, userId, guildId], (updateErr) => {
-                    if (updateErr) console.error('Error updating economy for message XP:', updateErr);
+                    if (updateErr) console.error('Error updating economy for message:', updateErr);
                 });
             } else {
                 db.run('INSERT INTO economy (userId, guildId, balance) VALUES (?, ?, ?)', [userId, guildId, currentBalance], (insertErr) => {
-                    if (insertErr) console.error('Error inserting economy for message XP:', insertErr);
+                    if (insertErr) console.error('Error inserting economy for message:', insertErr);
                 });
             }
         });

@@ -82,9 +82,9 @@ module.exports = {
         } catch (error) {
             console.error('Error creating poll:', error);
             if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ content: '创建投票时发生错误。(An error occurred while creating the poll.)', ephemeral: true });
+                await interaction.followUp({ content: 'An error occurred while creating the poll.', ephemeral: true });
             } else {
-                await interaction.reply({ content: '创建投票时发生错误。(An error occurred while creating the poll.)', ephemeral: true });
+                await interaction.reply({ content: 'An error occurred while creating the poll.', ephemeral: true });
             }
         }
     },
